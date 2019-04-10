@@ -53,13 +53,13 @@ impl Context {
         &self.client
     }
 
-    fn encode_binary<S: Serialize>(&self, data: &S) -> JuntaResult<MessageContent> {
+    pub fn encode_binary<S: Serialize>(&self, data: &S) -> JuntaResult<MessageContent> {
         Ok(MessageContent::Binary(
             serde_cbor::to_vec(data).map_err(|_e| JuntaError::new(JuntaErrorKind::Unknown))?,
         ))
     }
 
-    fn encode_text<S: Serialize>(&self, data: &S) -> JuntaResult<MessageContent> {
+    pub fn encode_text<S: Serialize>(&self, data: &S) -> JuntaResult<MessageContent> {
         Ok(MessageContent::Text(
             serde_json::to_string(data).map_err(|_e| JuntaError::new(JuntaErrorKind::Unknown))?,
         ))

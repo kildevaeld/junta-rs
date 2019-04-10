@@ -2,7 +2,7 @@ use futures::Future;
 use junta::prelude::*;
 use junta_service::plugins::{Extensible, Pluggable};
 use junta_service::*;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use typemap::ShareMap;
 
 pub struct ProtocolContext<I> {
@@ -18,12 +18,15 @@ impl<I> ProtocolContext<I> {
         &self.data
     }
 
-    pub fn decode<'a, D: Deserialize<'a>>(&'a self) -> JuntaResult<D> {
-        self.ctx.decode()
-    }
-
     pub fn send<S: Serialize>(&self, data: &S) -> impl Future<Item = (), Error = JuntaError> {
         self.ctx.send(data)
+    }
+}
+
+impl ProtocolContext<serde_cbor::Value> {
+    pub fn decode<D: DeserializeOwned>(&self) -> JuntaResult<D> {
+        serde_cbor::from_value(self.data().clone())
+            .map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
     }
 }
 
