@@ -1,0 +1,28 @@
+[package]
+name = "junta-protocol"
+version = "0.1.0"
+authors = ["Rasmus Kildevaeld <rasmuskildevaeld@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+junta = { path = "../junta" }
+junta-service = { path = "../junta-service" }
+futures = "^0.1"
+serde = "^1.0"
+serde_derive = "^1.0"
+serde_cbor = "*"
+erased-serde = "0.3"
+serde_json = "^1.0"
+slog = "^2.4"
+typemap = "^0.3"
+
+
+[dev-dependencies]
+slog-term = "^2.4"
+slog-async = "^2.3"
+tokio = "^0.1"
+
+
+[[example]]
+name = "junta"
+path = "examples/main.rs"

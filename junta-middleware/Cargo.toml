@@ -1,0 +1,20 @@
+[package]
+name = "junta-middleware"
+version = "0.1.0"
+authors = ["Rasmus Kildevaeld <rasmuskildevaeld@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+junta = { path = "../junta" }
+junta-service = { path = "../junta-service" }
+futures = "^0.1"
+
+[dev-dependencies]
+slog-term = "^2.4"
+slog-async = "^2.3"
+tokio = "^0.1"
+slog = "^2.4"
+
+[[example]]
+name = "junta-middleware"
+path = "examples/main.rs"

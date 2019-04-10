@@ -1,0 +1,18 @@
+[package]
+name = "junta-service"
+version = "0.1.0"
+authors = ["Rasmus Kildevaeld <rasmuskildevaeld@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+junta = { path = "../junta" }
+futures = "^0.1"
+serde = "^1.0"
+serde_json = "^1.0"
+serde_cbor = "*"
+websocket = "^0.22"
+typemap = "^0.3"
+
+
+[dev-dependencies]
+void = "^1.0"
