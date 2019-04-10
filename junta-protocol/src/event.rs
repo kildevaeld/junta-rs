@@ -1,7 +1,7 @@
 use junta::prelude::*;
 use serde_cbor::Value;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum EventType {
     Pub(String, Value),
     Sub(String),

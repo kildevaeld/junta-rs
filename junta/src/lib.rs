@@ -2,8 +2,10 @@
 extern crate slog;
 
 mod client;
+mod context;
 mod error;
 mod handler;
+mod plugins;
 mod server;
 mod utils;
 

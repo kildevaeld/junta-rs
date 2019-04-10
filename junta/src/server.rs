@@ -218,7 +218,7 @@ impl ServerHandler {
         clients.write().unwrap().insert(id.clone(), client);
         let exec = executor.clone();
         let logger = logger.clone();
-        let v = handler.handle(&cl, ClientEvent::Connect).and_then(|_| {
+        let v = handler.handle( &cl, ClientEvent::Connect).and_then(|_| {
             rx.map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
                 .for_each(move |msg| {
                     let fut = match msg {

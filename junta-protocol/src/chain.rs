@@ -1,3 +1,4 @@
+use super::context::ProtocolContext;
 use super::event::*;
 use super::protocol::{Protocol, ProtocolService};
 use junta::prelude::*;
@@ -27,11 +28,11 @@ where
         futures::future::FutureResult<(), JuntaError>,
     >;
 
-    fn execute(&self, ctx: Context, event: Event) -> Self::Future {
-        let fut = if self.s1.check(&ctx, &event) {
-            OneOfTree::Future1(self.s1.execute(ctx, event))
-        } else if self.s2.check(&ctx, &event) {
-            OneOfTree::Future2(self.s2.execute(ctx, event))
+    fn execute(&self, ctx: ProtocolContext<Event>) -> Self::Future {
+        let fut = if self.s1.check(ctx.ctx(), ctx.data()) {
+            OneOfTree::Future1(self.s1.execute(ctx))
+        } else if self.s2.check(ctx.ctx(), ctx.data()) {
+            OneOfTree::Future2(self.s2.execute(ctx))
         } else {
             OneOfTree::Future3(futures::future::err(
                 JuntaErrorKind::Error("invalid request".to_string()).into(),

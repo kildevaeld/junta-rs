@@ -40,7 +40,15 @@ fn main() {
             "hello from {}",
             ctx.ctx().client().id()
         )));
-        Ok(m)
+
+        ctx.request("greeting", &()).and_then(|req: String| {
+            println!("did receive {}", req);
+            Ok(())
+        })
+
+        //Ok(m)
+
+        //Ok(m)
     })
     .or(protocol_req_fn("greeting2", |value| {
         let m = format!("Hello, World 2 {:?}", value.data().clone());

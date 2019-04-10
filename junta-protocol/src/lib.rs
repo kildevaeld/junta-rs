@@ -7,6 +7,7 @@ pub mod event;
 pub mod protocol;
 pub mod protocol_ext;
 pub mod request_protocol;
+pub mod response_protocol;
 
 pub mod prelude {
     pub use super::chain::*;

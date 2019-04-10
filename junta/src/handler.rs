@@ -3,7 +3,6 @@ use super::error::JuntaError;
 use futures::prelude::*;
 use std::sync::Arc;
 
-
 pub trait Handler: Send + Sync {
     type Future: Future<Item = (), Error = JuntaError> + Send + 'static;
     fn handle(self: &Self, client: &Arc<Client>, event: ClientEvent) -> Self::Future;

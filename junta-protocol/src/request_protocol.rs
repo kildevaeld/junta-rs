@@ -71,21 +71,17 @@ where
     <S as RequestProtocolService>::Future: 'static + Send,
 {
     type Future = Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
-    fn execute(&self, ctx: Context, event: Event) -> Self::Future {
-        let out = match &event.event_type {
+    fn execute(&self, ctx: ProtocolContext<Event>) -> Self::Future {
+        let out = match ctx.data().event_type.clone() {
             EventType::Req(name, req) => {
-                let id = event.id;
+                let id = ctx.data().id;
                 let name = name.to_string();
-                let binary = ctx.is_binary();
-                let client = ctx.client().clone();
+                let binary = ctx.ctx().is_binary();
+                let client = ctx.ctx().client().clone();
                 OneOfTwo::Future1(
                     self.service
-                        .execute(ProtocolContext {
-                            ctx: ctx,
-                            data: req.clone(),
-                        })
+                        .execute(ctx.with_data(req))
                         .and_then(move |ret| {
-                            //
                             let value = serde_cbor::to_value(ret).unwrap();
                             if binary {
                                 client.send_binary(&Event::new(id, EventType::Res(name, value)))
@@ -116,7 +112,7 @@ where
     S: RequestProtocolService,
     <S as RequestProtocolService>::Future: 'static + Send,
 {
-    type Future = Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
+    type Future = <ProtocolService<Self> as Service>::Future; //Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
     type Service = ProtocolService<Self>;
     fn into_service(self) -> Self::Service {
         ProtocolService::new(self)
