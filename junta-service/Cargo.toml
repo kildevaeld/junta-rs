@@ -16,3 +16,4 @@ typemap = "^0.3"
 
 [dev-dependencies]
 void = "^1.0"
+tokio = "^0.1"
