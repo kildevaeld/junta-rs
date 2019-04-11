@@ -1,4 +1,5 @@
 use super::client::{Client, ClientEvent, ClientFuture};
+use super::context::Context;
 use super::error::{JuntaError, JuntaErrorKind, JuntaResult};
 use super::handler::{Handler, IntoHandler};
 use super::utils::{OneOfFour, OneOfFourFuture, OneOfTwo, OneOfTwoFuture};
@@ -14,7 +15,6 @@ use websocket::message::OwnedMessage;
 use websocket::r#async::Server as WSServer;
 use websocket::server::InvalidConnection;
 use websocket::{CloseData, WebSocketError};
-use super::context::Context;
 
 pub type ClientList = Arc<RwLock<HashMap<Uuid, Arc<Client>>>>;
 
@@ -145,7 +145,6 @@ impl ServerHandler {
         logger: Logger,
         addr: SocketAddr,
     ) -> JuntaResult<ServerHandler> {
-
         let counter = Arc::new(atomic_counter::RelaxedCounter::new(1));
 
         let work = WSServer::bind(addr, &Handle::default())?
@@ -172,7 +171,9 @@ impl ServerHandler {
                             .accept()
                             .map_err(|e| JuntaError::new(JuntaErrorKind::WebSocket(e)))
                             .and_then(move |(client, _)| {
-                                ServerHandler::connect(clients, logger, t, handler, client, addr, counter)
+                                ServerHandler::connect(
+                                    clients, logger, t, handler, client, addr, counter,
+                                )
                             }),
                     )
                 };
@@ -194,14 +195,16 @@ impl ServerHandler {
             websocket::r#async::MessageCodec<websocket::OwnedMessage>,
         >,
         addr: SocketAddr,
-        counter: Arc<atomic_counter::RelaxedCounter>
+        counter: Arc<atomic_counter::RelaxedCounter>,
     ) -> impl Future<Item = (), Error = JuntaError> {
         let id = Uuid::new_v4();
-        info!(
-            logger,
-            "client connected {:?}",
-            client.get_ref().peer_addr().unwrap()
-        );
+
+        let logger = logger.new(slog::o! {
+            "client" => id.to_string(),
+            "address" => format!("{:?}",client.get_ref().peer_addr().unwrap())
+        });
+
+        info!(logger, "client connected");
 
         let (sink, stream) = client.split();
 
@@ -217,10 +220,11 @@ impl ServerHandler {
             }),
             address: addr,
             counter: counter,
-            logger: logger.new(slog::o!{
-                "client" => id.to_string()
-            }),
+            logger: logger.clone(),
         });
+
+        let (cloned_client, cloned_list, cloned_handler) =
+            (client.clone(), clients.clone(), handler.clone());
 
         let cl = client.clone();
         //let this2 = this.clone();
@@ -228,45 +232,93 @@ impl ServerHandler {
         clients.write().unwrap().insert(id.clone(), client);
         let exec = executor.clone();
         let logger = logger.clone();
-        let v = handler.handle(Context::<ClientEvent>::new(cl.clone(), ClientEvent::Connect)).and_then(|_| {
-            rx.map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
-                .for_each(move |msg| {
-                    let cl = cl.clone();
-                    let fut = match msg {
-                        OwnedMessage::Close(close_data) => {
-                            clients.write().unwrap().remove(&cl.id);
-                            debug!(logger, "client sendt close message"; "id" => cl.id.to_string());
-                            let client = cl.clone();
-                            let logger = logger.clone();
-                            let out = handler
-                                .handle(Context::<ClientEvent>::new(cl, ClientEvent::Close(close_data)))
-                                .and_then(move |_| {
-                                    debug!(logger, "sending close to client"; "id" => client.id().to_string());
-                                    client.close()
-                                });
-                            
-                            OneOfFour::Future1(out)
-                        }
-                        OwnedMessage::Ping(ping) => {
-                            OneOfFour::Future2(cl.sender.clone().send(OwnedMessage::Pong(ping)).map(|_| ())
-                                .map_err(|_| JuntaErrorKind::Send.into()))
-                        }
-                        OwnedMessage::Pong(_) => OneOfFour::Future3(futures::future::ok(())),
-                        OwnedMessage::Binary(data) => OneOfFour::Future4(
-                            handler.handle(Context::<ClientEvent>::new(cl, ClientEvent::Message(MessageContent::Binary(data)))),
-                        ),
-                        OwnedMessage::Text(data) => OneOfFour::Future4(
-                            handler.handle(Context::<ClientEvent>::new(cl, ClientEvent::Message(MessageContent::Text(data)))),
-                        ),
-                    };
+        let v = handler
+            .handle(Context::<ClientEvent>::new(
+                cl.clone(),
+                ClientEvent::Connect,
+            ))
+            .and_then(|_| {
+                rx.map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
+                    .for_each(move |msg| {
+                        let cl = cl.clone();
+                        let fut = match msg {
+                            OwnedMessage::Close(close_data) => {
+                                clients.write().unwrap().remove(&cl.id);
+                                debug!(logger, "client sent close message");
+                                let client = cl.clone();
+                                let logger = logger.clone();
+                                let out = handler
+                                    .handle(Context::<ClientEvent>::new(
+                                        cl,
+                                        ClientEvent::Close(close_data),
+                                    ))
+                                    .and_then(move |_| {
+                                        debug!(logger, "sending close to client");
+                                        client.close()
+                                    });
 
-                    exec.spawn(OneOfFourFuture::new(fut).map_err(|e: JuntaError| ()));
-                    futures::future::ok(())
-                })
-        });
+                                OneOfFour::Future1(out)
+                            }
+                            OwnedMessage::Ping(ping) => {
+                                debug!(logger, "client sent ping");
+                                OneOfFour::Future2(
+                                    cl.sender
+                                        .clone()
+                                        .send(OwnedMessage::Pong(ping))
+                                        .map(|_| ())
+                                        .map_err(|_| JuntaErrorKind::Send.into()),
+                                )
+                            }
+                            OwnedMessage::Pong(_) => OneOfFour::Future3(futures::future::ok(())),
+                            OwnedMessage::Binary(data) => {
+                                debug!(logger, "client sent binary message");
+                                OneOfFour::Future4(handler.handle(Context::<ClientEvent>::new(
+                                    cl,
+                                    ClientEvent::Message(MessageContent::Binary(data)),
+                                )))
+                            }
+                            OwnedMessage::Text(data) => {
+                                debug!(logger, "client sent text message");
+                                OneOfFour::Future4(handler.handle(Context::<ClientEvent>::new(
+                                    cl,
+                                    ClientEvent::Message(MessageContent::Text(data)),
+                                )))
+                            }
+                        };
+
+                        exec.spawn(OneOfFourFuture::new(fut).map_err(|e: JuntaError| ()));
+                        futures::future::ok(())
+                    })
+            });
 
         let fut = ClientFuture::new(id, sink, stream, sx, rx1);
-        executor.spawn(v.join(fut).map(|_| ()).map_err(|_| ()));
+        executor.spawn(
+            v.join(fut)
+                .and_then(move |_| {
+                    let id = cloned_client.id().clone();
+                    let logger = cloned_client.logger().clone();
+                    let elogger = logger.clone();
+                    cloned_list.write().unwrap().remove(cloned_client.id());
+
+                    cloned_handler
+                        .handle(Context::<ClientEvent>::new(
+                            cloned_client,
+                            ClientEvent::Close(None),
+                        ))
+                        .map(move |_| {
+                            info!(logger, "client closed");
+                            ()
+                        })
+                        .map_err(move |e| {
+                            error!(elogger, "client closed with error"; "error" => e.to_string());
+                            e
+                        })
+                })
+                .map_err(|e| {
+                    println!("client finished with error {}", e);
+                    ()
+                }),
+        );
         futures::future::ok(())
     }
 }

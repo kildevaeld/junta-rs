@@ -18,7 +18,6 @@ macro_rules! poll_stream {
     ($stream: expr, $sender: expr) => {
         match $stream.poll() {
             Ok(Async::Ready(None)) => {
-                //println!("stream poll ready none");
                 return Ok(Async::Ready(()));
             }
             Ok(Async::Ready(Some(msg))) => {
