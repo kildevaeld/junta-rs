@@ -1,17 +1,17 @@
 use futures::prelude::*;
 use futures::sync::oneshot::{channel, Receiver, Sender};
 use junta::prelude::*;
-use junta_service::*;
+//use junta_service::*;
 use std::error::Error;
 use std::fmt;
 
-pub struct Next {
+pub struct Next<I> {
     ret: Receiver<JuntaResult<()>>,
-    send: Sender<Context>,
+    send: Sender<I>,
 }
 
-impl Next {
-    pub(crate) fn new() -> (Next, Sender<JuntaResult<()>>, Receiver<Context>) {
+impl<I> Next<I> {
+    pub fn new() -> (Next<I>, Sender<JuntaResult<()>>, Receiver<I>) {
         let (sx1, rx1) = channel();
         let (sx2, rx2) = channel();
         (
@@ -24,7 +24,7 @@ impl Next {
         )
     }
 
-    pub fn execute(self, req: Context) -> NextFuture {
+    pub fn execute(self, req: I) -> NextFuture {
         if self.send.send(req).is_err() {
             NextFuture { inner: None }
         } else {
@@ -79,20 +79,20 @@ impl Error for ChannelErr {
     }
 }
 
-pub trait Middleware {
+pub trait Middleware<I>: Send + Sync {
     type Future: Future<Item = (), Error = JuntaError> + Send + 'static;
-    fn execute(&self, req: Context, next: Next) -> Self::Future;
+    fn call(&self, req: I, next: Next<I>) -> Self::Future;
 }
 
-pub trait IntoMiddleware {
+pub trait IntoMiddleware<I> {
     type Future: Future<Item = (), Error = JuntaError> + Send + 'static;
-    type Middleware: Middleware<Future = Self::Future>;
+    type Middleware: Middleware<I, Future = Self::Future>;
     fn into_middleware(self) -> Self::Middleware;
 }
 
-impl<T> IntoMiddleware for T
+impl<T, I> IntoMiddleware<I> for T
 where
-    T: Middleware,
+    T: Middleware<I>,
 {
     type Future = T::Future;
     type Middleware = T;
@@ -101,37 +101,47 @@ where
     }
 }
 
-impl<T> Middleware for std::sync::Arc<T>
+impl<T, I> Middleware<I> for std::sync::Arc<T>
 where
-    T: Middleware,
+    T: Middleware<I>,
 {
+    //type Item = T::Item;
     type Future = T::Future;
-    fn execute(&self, req: Context, next: Next) -> Self::Future {
-        self.as_ref().execute(req, next)
+    fn call(&self, req: I, next: Next<I>) -> Self::Future {
+        self.as_ref().call(req, next)
     }
 }
 
 pub struct MiddlewareFn<F> {
     inner: F,
+    // _u: std::marker::PhantomData<U>,
+    // _i: std::marker::PhantomData<I>,
 }
 
-impl<F, U> Middleware for MiddlewareFn<F>
+impl<F: Send + Sync, U, I> Middleware<I> for MiddlewareFn<F>
 where
-    F: (Fn(Context, Next) -> U) + Send,
+    F: Fn(I, Next<I>) -> U,
     U: IntoFuture<Item = (), Error = JuntaError>,
     <U as IntoFuture>::Future: Send + 'static,
 {
     type Future = U::Future;
+    // type Item = Context<ClientEvent>;
 
-    fn execute(&self, req: Context, next: Next) -> Self::Future {
+    fn call(&self, req: I, next: Next<I>) -> Self::Future {
         (self.inner)(req, next).into_future()
     }
 }
 
-pub fn middleware_fn<F, U>(f: F) -> MiddlewareFn<F>
+pub fn middleware_fn<F, U, I>(f: F) -> impl Middleware<I, Future = U::Future>
+//MiddlewareFn<F>
 where
-    F: (Fn(Context, Next) -> U) + Send,
+    F: (Fn(I, Next<I>) -> U) + Send + Sync,
     U: IntoFuture<Item = (), Error = JuntaError> + Send + 'static,
+    <U as IntoFuture>::Future: Send + 'static,
 {
-    MiddlewareFn { inner: f }
+    MiddlewareFn {
+        inner: f,
+        // _u: std::marker::PhantomData,
+        // _i: std::marker::PhantomData,
+    }
 }

@@ -4,7 +4,7 @@ use futures::sync::oneshot::{Receiver, Sender};
 use std::sync::Arc;
 
 use junta::prelude::*;
-use junta_service::*;
+// use junta_service::*;
 
 #[derive(Clone)]
 pub struct MiddlewareChain<S, F> {
@@ -12,34 +12,36 @@ pub struct MiddlewareChain<S, F> {
     f: Arc<F>,
 }
 
-impl<S, F> Middleware for MiddlewareChain<S, F>
+impl<S: Middleware<I>, F, I: Send + 'static> Middleware<I> for MiddlewareChain<S, F>
 where
-    S: Middleware + Send + Sync + 'static,
-    F: Middleware + Send + Sync + 'static,
-    <F as Middleware>::Future: Sync,
+    S: Middleware<I> + Send + Sync + 'static,
+    F: Middleware<I> + Send + Sync + 'static,
+    <F as Middleware<I>>::Future: Sync,
+    //<S as Middleware>::Item: Send,
 {
+    //type Item = S::Item;
     type Future = MiddlewareChainFuture<S::Future>;
-    fn execute(&self, req: Context, next: Next) -> Self::Future {
+    fn call(&self, req: I, next: Next<I>) -> Self::Future {
         let (n, sx, rx) = Next::new();
         let f = self.f.clone();
         let fut = rx
             .map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
-            .and_then(move |req| f.execute(req, next));
+            .and_then(move |req| f.call(req, next));
 
-        let fut2 = self.s.execute(req, n);
+        let fut2 = self.s.call(req, n);
         MiddlewareChainFuture::new(Box::new(fut), fut2, sx)
     }
 }
 
-pub trait MiddlewareChainable: Sized {
-    fn stack<M: IntoMiddleware>(self, other: M) -> MiddlewareChain<Self, M::Middleware>;
+pub trait MiddlewareChainable<I>: Sized {
+    fn stack<M: IntoMiddleware<I>>(self, other: M) -> MiddlewareChain<Self, M::Middleware>;
 }
 
-impl<T> MiddlewareChainable for T
+impl<T, I> MiddlewareChainable<I> for T
 where
-    T: Middleware,
+    T: Middleware<I>,
 {
-    fn stack<M: IntoMiddleware>(self, other: M) -> MiddlewareChain<Self, M::Middleware> {
+    fn stack<M: IntoMiddleware<I>>(self, other: M) -> MiddlewareChain<Self, M::Middleware> {
         MiddlewareChain {
             s: Arc::new(self),
             f: Arc::new(other.into_middleware()),
@@ -47,43 +49,17 @@ where
     }
 }
 
-pub trait Handable: Sized + Middleware + Send + Sync {
-    fn then<M: IntoService>(self, handler: M) -> ChainHandler<Self, M::Service>
-    where
-        <M as IntoService>::Service: Sync,
-    {
+pub trait Handable: Sized + Middleware<Context<ClientEvent>> {
+    fn then<M: IntoHandler>(self, handler: M) -> ChainHandler<Self, M::Handler> {
         ChainHandler {
             s: Arc::new(self),
-            f: Arc::new(handler.into_service()),
+            f: Arc::new(handler.into_handler()),
         }
     }
     //fn to_handler(self) -> ChainHandler<Self, NotFoundHandler>;
 }
 
-impl<T> Handable for T
-where
-    T: Middleware + Send + Sync,
-{
-    // fn then<M: IntoService>(self, handler: M) -> ChainHandler<Self, M::Service>
-    // where
-    //     <M as IntoService>::Service: Sync;
-    // {
-    //     ChainHandler {
-    //         s: Arc::new(self),
-    //         f: Arc::new(handler.into_service()),
-    //     }
-    // }
-
-    // fn to_handler(self) -> ChainHandler<Self, NotFoundHandler>
-    // where
-    //     <Self as Middleware>::Future: Send,
-    // {
-    //     ChainHandler {
-    //         s: Arc::new(self),
-    //         f: Arc::new(NotFoundHandler),
-    //     }
-    // }
-}
+impl<T> Handable for T where T: Middleware<Context<ClientEvent>> {}
 
 pub struct MiddlewareChainFuture<F: Future> {
     s: Option<Box<Future<Item = (), Error = JuntaError> + Send>>,
@@ -134,46 +110,34 @@ where
 
 pub struct ChainHandler<S, F>
 where
-    S: Middleware + Sync + Send,
-    F: Service + Sync,
+    S: Middleware<Context<ClientEvent>> + Sync + Send,
+    F: Handler + Sync,
 {
     s: Arc<S>,
     f: Arc<F>,
 }
 
-impl<S, F> Service for ChainHandler<S, F>
+impl<S, F> Handler for ChainHandler<S, F>
 where
-    S: Middleware + Sync + Send + 'static,
-    F: Service + Sync + Send + 'static,
-    <F as Service>::Future: Send + 'static,
+    S: Middleware<Context<ClientEvent>> + Sync + Send + 'static,
+    F: Handler + Sync + Send + 'static,
+    <F as Handler>::Future: Send + 'static,
 {
     type Future = MiddlewareChainFuture<S::Future>;
-    fn execute(&self, req: Context) -> Self::Future {
-        let (n, sx, rx) = Next::new();
+    fn handle(&self, req: Context<ClientEvent>) -> Self::Future {
+        let (n, sx, rx) = Next::<Context<ClientEvent>>::new();
         let f = self.f.clone();
 
         let fut = rx
             .map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
-            .and_then(move |req| f.execute(req));
+            .and_then(move |req| f.handle(req));
 
-        let fut2 = self.s.execute(req, n);
+        let fut2 = self.s.call(req, n);
         MiddlewareChainFuture::new(Box::new(fut), fut2, sx)
     }
 
-    fn check(&self, req: &Context) -> bool {
-        self.f.check(req)
-    }
+    // fn check(&self, req: &Context<ClientEvent>) -> bool {
+    //     self.f.check(req)
+    // }
 }
 
-impl<S, F> IntoHandler for ChainHandler<S, F>
-where
-    S: Middleware + Sync + Send + 'static,
-    F: Service + Sync + Send + 'static,
-    <F as Service>::Future: Send + 'static,
-{
-    type Future = <ServiceHandler<Self> as Handler>::Future;
-    type Handler = ServiceHandler<Self>;
-    fn into_handler(self) -> Self::Handler {
-        ServiceHandler::new(self)
-    }
-}

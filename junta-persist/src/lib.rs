@@ -8,8 +8,7 @@
 
 use junta::prelude::*;
 use junta_middleware::{Middleware, Next, NextFuture};
-use junta_service::plugins::{Extensible, Plugin};
-use junta_service::*;
+use plugins::*;
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Mutex, RwLock};
@@ -92,7 +91,7 @@ impl<T> PersistentInto<Arc<RwLock<T>>> for T {
 /// the `Response` extensions.
 ///
 /// `State` also implements `Plugin`, so the data stored within can be
-/// accessed through `request.get::<State<P>>()` as an `Arc<RwLock<P::Value>>`.
+/// accessed through `request.get::<State<P,I>>()` as an `Arc<RwLock<P::Value>>`.
 pub struct State<P: Key> {
     data: Arc<RwLock<P::Value>>,
 }
@@ -107,7 +106,7 @@ pub struct State<P: Key> {
 /// the `Response` extensions.
 ///
 /// `Read` also implements `Plugin`, so the data stored within can be
-/// accessed through `request.get::<Read<P>>()` as an `Arc<P::Value>`.
+/// accessed through `request.get::<Read<P,I>>()` as an `Arc<P::Value>`.
 pub struct Read<P: Key> {
     data: Arc<P::Value>,
 }
@@ -124,7 +123,7 @@ pub struct Read<P: Key> {
 /// the `Response` extensions.
 ///
 /// `Write` also implements `Plugin`, so the data stored within can be
-/// accessed through `request.get::<Write<P>>()` as an `Arc<Mutex<P::Value>>`.
+/// accessed through `request.get::<Write<P,I>>()` as an `Arc<Mutex<P::Value>>`.
 pub struct Write<P: Key> {
     data: Arc<Mutex<P::Value>>,
 }
@@ -183,12 +182,12 @@ where
     type Value = Arc<Mutex<P::Value>>;
 }
 
-impl<P: Key> Plugin<Context> for State<P>
+impl<P: Key, I: Extensible> Plugin<I> for State<P>
 where
     P::Value: Send + Sync,
 {
     type Error = PersistentError;
-    fn eval(req: &mut Context) -> Result<Arc<RwLock<P::Value>>, PersistentError> {
+    fn eval(req: &mut I) -> Result<Arc<RwLock<P::Value>>, PersistentError> {
         req.extensions()
             .get::<State<P>>()
             .cloned()
@@ -196,12 +195,12 @@ where
     }
 }
 
-impl<P: Key> Plugin<Context> for Read<P>
+impl<P: Key, I: Extensible> Plugin<I> for Read<P>
 where
     P::Value: Send + Sync,
 {
     type Error = PersistentError;
-    fn eval(req: &mut Context) -> Result<Arc<P::Value>, PersistentError> {
+    fn eval(req: &mut I) -> Result<Arc<P::Value>, PersistentError> {
         req.extensions()
             .get::<Read<P>>()
             .cloned()
@@ -209,12 +208,12 @@ where
     }
 }
 
-impl<P: Key> Plugin<Context> for Write<P>
+impl<P: Key, I: 'static + Extensible> Plugin<I> for Write<P>
 where
     P::Value: Send + Sync,
 {
     type Error = PersistentError;
-    fn eval(req: &mut Context) -> Result<Arc<Mutex<P::Value>>, PersistentError> {
+    fn eval(req: &mut I) -> Result<Arc<Mutex<P::Value>>, PersistentError> {
         req.extensions()
             .get::<Write<P>>()
             .cloned()
@@ -222,34 +221,34 @@ where
     }
 }
 
-impl<P: Key> Middleware for State<P>
+impl<P: Key, I: Extensible> Middleware<I> for State<P>
 where
     P::Value: Send + Sync,
 {
     type Future = NextFuture;
-    fn execute(&self, mut req: Context, next: Next) -> Self::Future {
+    fn call(&self, mut req: I, next: Next<I>) -> Self::Future {
         req.extensions_mut().insert::<State<P>>(self.data.clone());
         next.execute(req)
     }
 }
 
-impl<P: Key> Middleware for Read<P>
+impl<P: Key, I: Extensible> Middleware<I> for Read<P>
 where
     P::Value: Send + Sync,
 {
     type Future = NextFuture;
-    fn execute(&self, mut req: Context, next: Next) -> Self::Future {
+    fn call(&self, mut req: I, next: Next<I>) -> Self::Future {
         req.extensions_mut().insert::<Read<P>>(self.data.clone());
         next.execute(req)
     }
 }
 
-impl<P: Key> Middleware for Write<P>
+impl<P: Key, I: Extensible> Middleware<I> for Write<P>
 where
     P::Value: Send + Sync,
 {
     type Future = NextFuture;
-    fn execute(&self, mut req: Context, next: Next) -> Self::Future {
+    fn call(&self, mut req: I, next: Next<I>) -> Self::Future {
         req.extensions_mut().insert::<Write<P>>(self.data.clone());
         next.execute(req)
     }

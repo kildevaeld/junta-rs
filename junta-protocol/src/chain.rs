@@ -1,8 +1,6 @@
-use super::context::ProtocolContext;
 use super::event::*;
 use super::protocol::{Protocol, ProtocolService};
 use junta::prelude::*;
-use junta_service::*;
 
 pub struct ProtocolChain<S1, S2> {
     s1: S1,
@@ -28,10 +26,11 @@ where
         futures::future::FutureResult<(), JuntaError>,
     >;
 
-    fn execute(&self, ctx: ProtocolContext<Event>) -> Self::Future {
-        let fut = if self.s1.check(ctx.ctx(), ctx.data()) {
+    fn execute(&self, ctx: ChildContext<ClientEvent, Event>) -> Self::Future {
+        let borrow = BorrowedContext::new(ctx.parent(), ctx.message());
+        let fut = if self.s1.check(&borrow) {
             OneOfTree::Future1(self.s1.execute(ctx))
-        } else if self.s2.check(ctx.ctx(), ctx.data()) {
+        } else if self.s2.check(&borrow) {
             OneOfTree::Future2(self.s2.execute(ctx))
         } else {
             OneOfTree::Future3(futures::future::err(
@@ -42,19 +41,19 @@ where
     }
 
     #[inline]
-    fn check(&self, ctx: &Context, event: &Event) -> bool {
-        self.s1.check(ctx, event) || self.s2.check(ctx, event)
+    fn check(&self, ctx: &BorrowedContext<ClientEvent, Event>) -> bool {
+        self.s1.check(ctx) || self.s2.check(ctx)
     }
 }
 
-impl<S1, S2> IntoService for ProtocolChain<S1, S2>
+impl<S1, S2> IntoHandler for ProtocolChain<S1, S2>
 where
-    S1: Protocol,
-    S2: Protocol,
+    S1: Protocol + 'static,
+    S2: Protocol + 'static,
 {
-    type Future = <ProtocolService<Self> as Service>::Future; //Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
-    type Service = ProtocolService<Self>;
-    fn into_service(self) -> Self::Service {
+    type Future = <ProtocolService<Self> as Handler>::Future; //Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
+    type Handler = ProtocolService<Self>;
+    fn into_handler(self) -> Self::Handler {
         ProtocolService::new(self)
     }
 }

@@ -9,15 +9,16 @@ pub enum EventType {
     Res(String, Value),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Event {
-    pub id: i32,
+    pub id: usize,
+    #[serde(rename = "type")]
     pub event_type: EventType,
     //content: Value,
 }
 
 impl Event {
-    pub fn new(id: i32, event_type: EventType) -> Event {
+    pub fn new(id: usize, event_type: EventType) -> Event {
         Event { id, event_type }
     }
     pub fn try_from(msg: &MessageContent) -> JuntaResult<Event> {

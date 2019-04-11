@@ -5,8 +5,8 @@ authors = ["Rasmus Kildevaeld <rasmuskildevaeld@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-junta = { path = "../junta" }
-junta-service = { path = "../junta-service" }
+junta = { path = "../junta", features = ["encoding"] }
+#junta-service = { path = "../junta-service" }
 futures = "^0.1"
 
 [dev-dependencies]

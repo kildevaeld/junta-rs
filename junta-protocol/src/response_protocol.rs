@@ -1,33 +1,36 @@
-use super::context::ProtocolContext;
 use super::event::*;
 use super::protocol::ListenerList;
 use super::protocol::Protocol;
 use futures::prelude::*;
 use junta::prelude::*;
-use junta_service::*;
+use junta_persist::*;
+use plugins::*;
 
 pub struct ResponseProtocol {
-    pub(crate) listeners: ListenerList,
+    //pub(crate) listeners: ListenerList,
 }
 
 impl Protocol for ResponseProtocol {
     type Future = Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
-    fn execute(&self, ctx: ProtocolContext<Event>) -> Self::Future {
-        let (name, data) = match &ctx.data().event_type {
+    fn execute(&self, mut ctx: ChildContext<ClientEvent, Event>) -> Self::Future {
+        let (name, data) = match ctx.message().clone().event_type {
             EventType::Res(name, data) => (name, data),
             _ => {
                 return Box::new(futures::future::err(JuntaErrorKind::Unknown.into()));
             }
         };
-        let mut listeners = self.listeners.write().unwrap();
+
+        let listeners = ctx.get::<State<ListenerList>>().unwrap(); //.write().unwrap();
         let index = listeners
+            .read()
+            .unwrap()
             .iter()
-            .position(|m| m.id == ctx.data().id && m.name.as_str() == name);
+            .position(|m| m.id == ctx.message().id && m.name.as_str() == name);
         let fut = if index.is_none() {
             futures::future::err(JuntaErrorKind::Unknown.into())
         } else {
             let index = index.unwrap();
-            let listener = listeners.remove(index);
+            let listener = listeners.write().unwrap().remove(index);
             listener.sender.send(Ok(data.clone()));
             futures::future::ok(())
         };
@@ -35,15 +38,22 @@ impl Protocol for ResponseProtocol {
         Box::new(fut)
     }
 
-    fn check(&self, _ctx: &Context, event: &Event) -> bool {
-        let name = match &event.event_type {
+    fn check(&self, ctx: &BorrowedContext<ClientEvent, Event>) -> bool {
+        let name = match &ctx.message().event_type {
             EventType::Res(name, _) => name,
             _ => return false,
         };
-        let listeners = self.listeners.read().unwrap();
+        let listeners = match ctx.extensions().get::<State<ListenerList>>() {
+            Some(l) => l.read().unwrap(),
+            None => {
+                println!("could not find extensions");
+                return false;
+            }
+        };
+        //let listeners = ctx.get::<ListenerList>().unwrap().read().unwrap();
         listeners
             .iter()
-            .find(|m| m.id == event.id && m.name.as_str() == name)
+            .find(|m| m.id == ctx.message().id && m.name.as_str() == name)
             .is_some()
     }
 }

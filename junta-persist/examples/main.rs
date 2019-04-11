@@ -3,8 +3,7 @@ use futures::prelude::*;
 use junta::prelude::*;
 use junta_middleware::*;
 use junta_persist::*;
-use junta_service::plugins::*;
-use junta_service::*;
+use plugins::*;
 use slog::{Drain, Logger};
 use std::sync::Arc;
 use std::time::Duration;
@@ -38,19 +37,19 @@ fn main() {
 
     let m = m
         .stack(middleware_fn(|ctx, next| {
-            println!("Middleware");
+            //println!("Middleware");
             next.execute(ctx)
         }))
-        .then(service_fn(|mut ctx| {
+        .then(handle_fn(|mut ctx| {
             let store = ctx.get::<Read<Store>>()?;
-            println!("Hello");
+            //println!("Hello");
             Ok(())
         })); //.stack(middleware_fn(|ctx, next| Ok(())));
 
     let fut = Server::bind("127.0.0.1:2794")
         .unwrap()
-        .logger(logger)
-        .serve(runtime.executor(), ServiceHandler::new(m))
+        //.logger(logger)
+        .serve(runtime.executor(), m)
         .unwrap();
 
     runtime.block_on(fut).unwrap();

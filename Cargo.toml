@@ -3,7 +3,7 @@
 members = [
     "junta",
     "junta-protocol",
-    "junta-service",
+    #"junta-service",
     "junta-middleware",
     "junta-persist"
 ]

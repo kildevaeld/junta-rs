@@ -1,5 +1,6 @@
 use super::error::{JuntaError, JuntaErrorKind};
 use super::server::{Broadcast, MessageContent, Server};
+use atomic_counter::AtomicCounter;
 use futures::prelude::*;
 use futures::sink::Sink;
 use futures::stream::{SplitSink, SplitStream};
@@ -17,7 +18,7 @@ macro_rules! poll_stream {
     ($stream: expr, $sender: expr) => {
         match $stream.poll() {
             Ok(Async::Ready(None)) => {
-                println!("stream poll ready none");
+                //println!("stream poll ready none");
                 return Ok(Async::Ready(()));
             }
             Ok(Async::Ready(Some(msg))) => {
@@ -59,10 +60,13 @@ pub struct Client {
         Broadcast<Future = futures::future::FutureResult<(), JuntaError>> + Send + Sync + 'static,
     >,
     pub(crate) address: SocketAddr,
+    pub(crate) counter: Arc<atomic_counter::RelaxedCounter>,
+    pub(crate) logger: slog::Logger,
 }
 
 impl Client {
     pub fn send(&self, msg: MessageContent) -> impl Future<Item = (), Error = JuntaError> {
+        debug!(self.logger, "sending message");
         self.sender
             .clone()
             .send(msg.to_message())
@@ -86,7 +90,16 @@ impl Client {
         &self,
         msg: MessageContent,
     ) -> Box<Future<Item = (), Error = JuntaError> + Send + 'static> {
+        debug!(self.logger, "broadcast message");
         Box::new(self.server.broadcast(self, msg))
+    }
+
+    pub fn next_seq(&self) -> usize {
+        self.counter.inc()
+    }
+
+    pub fn logger(&self) -> &slog::Logger {
+        &self.logger
     }
 }
 
@@ -102,11 +115,11 @@ impl PartialEq for Client {
     }
 }
 
-impl Drop for Client {
-    fn drop(&mut self) {
-        println!("drop that motherfucker");
-    }
-}
+// impl Drop for Client {
+//     fn drop(&mut self) {
+//         println!("drop that motherfucker");
+//     }
+// }
 
 pub struct ClientFuture {
     id: Uuid,

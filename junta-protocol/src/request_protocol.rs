@@ -1,15 +1,14 @@
-use super::context::ProtocolContext;
+// use super::context::Context;
 use super::event::*;
 use super::protocol::{Protocol, ProtocolService};
 use erased_serde::Serialize as ESerialize;
 use futures::prelude::*;
 use junta::prelude::*;
-use junta_service::*;
 use serde_cbor::Value;
 
 pub trait RequestProtocolService {
     type Future: Future<Item = Box<dyn ESerialize>, Error = JuntaError>;
-    fn execute(&self, ctx: ProtocolContext<Value>) -> Self::Future;
+    fn execute(&self, ctx: Context<Value>) -> Self::Future;
 }
 
 pub struct RequestProtocolServiceFn<F> {
@@ -24,13 +23,13 @@ impl<F> RequestProtocolServiceFn<F> {
 
 impl<F, U, I> RequestProtocolService for RequestProtocolServiceFn<F>
 where
-    F: Fn(ProtocolContext<Value>) -> U,
+    F: Fn(Context<Value>) -> U,
     U: IntoFuture<Item = I, Error = JuntaError>,
     <U as IntoFuture>::Future: 'static + Send,
     I: serde::Serialize + 'static,
 {
     type Future = Box<Future<Item = Box<ESerialize>, Error = JuntaError> + Send + 'static>;
-    fn execute(&self, ctx: ProtocolContext<Value>) -> Self::Future {
+    fn execute(&self, ctx: Context<Value>) -> Self::Future {
         let out = (self.inner)(ctx);
         Box::new(
             out.into_future()
@@ -44,7 +43,7 @@ pub fn protocol_req_fn<S: AsRef<str>, F: Send + Sync, U, I: serde::Serialize + '
     func: F,
 ) -> RequestProtocol<RequestProtocolServiceFn<F>>
 where
-    F: Fn(ProtocolContext<Value>) -> U,
+    F: Fn(Context<Value>) -> U,
     U: IntoFuture<Item = I, Error = JuntaError> + Send,
     <U as IntoFuture>::Future: Send + 'static,
 {
@@ -65,22 +64,22 @@ impl<S> RequestProtocol<S> {
     }
 }
 
-impl<S> Protocol for RequestProtocol<S>
+impl<S: Sync + Send + 'static> Protocol for RequestProtocol<S>
 where
     S: RequestProtocolService,
     <S as RequestProtocolService>::Future: 'static + Send,
 {
     type Future = Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
-    fn execute(&self, ctx: ProtocolContext<Event>) -> Self::Future {
-        let out = match ctx.data().event_type.clone() {
+    fn execute(&self, ctx: ChildContext<ClientEvent, Event>) -> Self::Future {
+        let out = match ctx.message().event_type.clone() {
             EventType::Req(name, req) => {
-                let id = ctx.data().id;
+                let id = ctx.message().id;
                 let name = name.to_string();
-                let binary = ctx.ctx().is_binary();
-                let client = ctx.ctx().client().clone();
+                let binary = ctx.binary();
+                let client = ctx.client().clone();
                 OneOfTwo::Future1(
                     self.service
-                        .execute(ctx.with_data(req))
+                        .execute(ctx.into_parent().with_message(req).0)
                         .and_then(move |ret| {
                             let value = serde_cbor::to_value(ret).unwrap();
                             if binary {
@@ -99,22 +98,22 @@ where
         Box::new(OneOfTwoFuture::new(out))
     }
 
-    fn check(&self, _ctx: &Context, event: &Event) -> bool {
-        match &event.event_type {
+    fn check(&self, ctx: &BorrowedContext<ClientEvent, Event>) -> bool {
+        match &ctx.message().event_type {
             EventType::Req(name, _) => name == self.name.as_str(),
             _ => false,
         }
     }
 }
 
-impl<S> IntoService for RequestProtocol<S>
+impl<S: Send + Sync + 'static> IntoHandler for RequestProtocol<S>
 where
     S: RequestProtocolService,
     <S as RequestProtocolService>::Future: 'static + Send,
 {
-    type Future = <ProtocolService<Self> as Service>::Future; //Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
-    type Service = ProtocolService<Self>;
-    fn into_service(self) -> Self::Service {
+    type Future = <ProtocolService<Self> as Handler>::Future; //Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
+    type Handler = ProtocolService<Self>;
+    fn into_handler(self) -> Self::Handler {
         ProtocolService::new(self)
     }
 }

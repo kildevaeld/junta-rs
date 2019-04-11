@@ -1,4 +1,4 @@
-use super::context::Context;
+//use super::context::Context;
 use futures::prelude::*;
 use junta::prelude::*;
 use std::sync::Arc;
@@ -79,7 +79,7 @@ impl<S: Service> ServiceHandler<S> {
 impl<S: Service + Send + Sync> Handler for ServiceHandler<S> {
     type Future =
         OneOfTwoFuture<(), JuntaError, S::Future, futures::future::FutureResult<(), JuntaError>>;
-    fn handle(self: &Self, client: &Arc<Client>, event: ClientEvent) -> Self::Future {
+    fn handle(self: &Self, ctx: Context<>) -> Self::Future {
         let fut = match event {
             ClientEvent::Close(_) => OneOfTwo::Future2(futures::future::ok(())),
             ClientEvent::Connect => OneOfTwo::Future2(futures::future::ok(())),

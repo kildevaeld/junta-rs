@@ -1,0 +1,20 @@
+config:
+  target: "ws://localhost:2794/"
+  phases:
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 50
+    - duration: 120
+      arrivalRate: 50
+      name: "Sustained max load"
+  ws:
+    # Set a custom subprotocol:
+    subprotocols:
+      - rust-websocket
+      - soap
+scenarios:
+  - engine: "ws"
+    flow:
+      - send: "hello"
+      - think: 1
+      - send: "world"
