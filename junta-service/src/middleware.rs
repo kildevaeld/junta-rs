@@ -232,24 +232,26 @@ where
 
 use std::marker::PhantomData;
 
-pub struct MiddlewareFn<F, I> {
+pub struct MiddlewareFn<F, I, O, E> {
     inner: F,
     _i: PhantomData<I>,
+    _o: PhantomData<O>,
+    _e: PhantomData<E>,
 }
 
-impl<F, I, U> Middleware for MiddlewareFn<F, I>
+impl<F, I, O, E, U> Middleware for MiddlewareFn<F, I, O, E>
 where
-    F: Fn(I) -> U,
-    U: IntoFuture,
+    F: Fn(I, Next<I, O, E>) -> U,
+    U: IntoFuture<Item = O, Error = E>,
     <U as IntoFuture>::Future: Send + 'static,
 {
     type Input = I;
-    type Output = U::Item;
-    type Error = U::Error;
+    type Output = O;
+    type Error = E;
     type Future = U::Future;
 
     fn call(&self, input: I, next: Next<Self::Input, Self::Output, Self::Error>) -> Self::Future {
-        (self.inner)(input).into_future()
+        (self.inner)(input, next).into_future()
     }
 }
 
@@ -257,12 +259,14 @@ pub fn middleware_fn<F, I, U>(
     service: F,
 ) -> impl Middleware<Input = I, Output = U::Item, Error = U::Error, Future = U::Future>
 where
-    F: Fn(I) -> U,
+    F: Fn(I, Next<I, U::Item, U::Error>) -> U,
     U: IntoFuture,
     <U as IntoFuture>::Future: Send + 'static,
 {
     MiddlewareFn {
         inner: service,
         _i: PhantomData,
+        _o: PhantomData,
+        _e: PhantomData,
     }
 }
