@@ -85,46 +85,61 @@ where
     }
 }
 
-// pub enum OneOfFour<
-//     I,
-//     E,
-//     F1: Future<Item = I, Error = E>,
-//     F2: Future<Item = I, Error = E>,
-//     F3: Future<Item = I, Error = E>,
-//     F4: Future<Item = I, Error = E>,
-// > {
-//     Future1(F1),
-//     Future2(F2),
-//     Future3(F3),
-//     Future4(F4),
-// }
+pub enum OneOfFour<
+    I,
+    E,
+    F1: Future<Item = I, Error = E>,
+    F2: Future<Item = I, Error = E>,
+    F3: Future<Item = I, Error = E>,
+    F4: Future<Item = I, Error = E>,
+> {
+    Future1(F1),
+    Future2(F2),
+    Future3(F3),
+    Future4(F4),
+}
 
-// pub struct OneOfFourFuture<I, E, F1: Future, F2: Future, F3: Future, F4: Future> {
-//     inner: OneOfFour<I, E, F1, F2, F3, F4>,
-// }
+pub struct OneOfFourFuture<
+    I,
+    E,
+    F1: Future<Item = I, Error = E>,
+    F2: Future<Item = I, Error = E>,
+    F3: Future<Item = I, Error = E>,
+    F4: Future<Item = I, Error = E>,
+> {
+    inner: OneOfFour<I, E, F1, F2, F3, F4>,
+}
 
-// impl<I, E, F1: Future, F2: Future, F3: Future, F4: Future> OneOfFourFuture<I, E, F1, F2, F3, F4> {
-//     pub fn new(inner: OneOfFour<I, E, F1, F2, F3, F4>) -> OneOfFourFuture<I, E, F1, F2, F3, F4> {
-//         OneOfFourFuture { inner }
-//     }
-// }
+impl<
+        I,
+        E,
+        F1: Future<Item = I, Error = E>,
+        F2: Future<Item = I, Error = E>,
+        F3: Future<Item = I, Error = E>,
+        F4: Future<Item = I, Error = E>,
+    > OneOfFourFuture<I, E, F1, F2, F3, F4>
+{
+    pub fn new(inner: OneOfFour<I, E, F1, F2, F3, F4>) -> OneOfFourFuture<I, E, F1, F2, F3, F4> {
+        OneOfFourFuture { inner }
+    }
+}
 
-// impl<I, E, F1: Future, F2: Future, F3: Future, F4: Future> Future
-//     for OneOfFourFuture<I, E, F1, F2, F3, F4>
-// where
-//     F1: Future<Item = I, Error = E>,
-//     F2: Future<Item = I, Error = E>,
-//     F3: Future<Item = I, Error = E>,
-//     F4: Future<Item = I, Error = E>,
-// {
-//     type Item = I;
-//     type Error = E;
-//     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-//         match &mut self.inner {
-//             OneOfFour::Future1(fut) => fut.poll(),
-//             OneOfFour::Future2(fut) => fut.poll(),
-//             OneOfFour::Future3(fut) => fut.poll(),
-//             OneOfFour::Future4(fut) => fut.poll(),
-//         }
-//     }
-// }
+impl<I, E, F1: Future, F2: Future, F3: Future, F4: Future> Future
+    for OneOfFourFuture<I, E, F1, F2, F3, F4>
+where
+    F1: Future<Item = I, Error = E>,
+    F2: Future<Item = I, Error = E>,
+    F3: Future<Item = I, Error = E>,
+    F4: Future<Item = I, Error = E>,
+{
+    type Item = I;
+    type Error = E;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match &mut self.inner {
+            OneOfFour::Future1(fut) => fut.poll(),
+            OneOfFour::Future2(fut) => fut.poll(),
+            OneOfFour::Future3(fut) => fut.poll(),
+            OneOfFour::Future4(fut) => fut.poll(),
+        }
+    }
+}

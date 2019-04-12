@@ -49,10 +49,10 @@ where
         OneOfTreeFuture::new(fut)
     }
 
-    // #[inline]
-    // fn check(&self, ctx: &Context<ClientEvent>) -> bool {
-    //     self.s1.check(ctx) || self.s2.check(ctx)
-    // }
+    #[inline]
+    fn should_call(&self, ctx: &Self::Input) -> bool {
+        self.s1.should_call(ctx) || self.s2.should_call(ctx)
+    }
 }
 
 pub trait ServiceExt: Service + Sized {

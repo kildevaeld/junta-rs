@@ -61,24 +61,6 @@ where
     }
 }
 
-// pub trait Handable: Sized + Middleware + Send + Sync {
-//     fn then<M: IntoService<Input = Self::Input, Output = Self::Output, Error = Self::Error>>(
-//         self,
-//         handler: M,
-//     ) -> ChainHandler<Self, M::Service>
-//     where
-//         <M as IntoService>::Service: Send + Sync,
-//     {
-//         ChainHandler {
-//             s: Arc::new(self),
-//             f: Arc::new(handler.into_service()),
-//         }
-//     }
-//     //fn to_handler(self) -> ChainHandler<Self, NotFoundHandler>;
-// }
-
-// impl<T> Handable for T where T: Middleware + Sync + Send {}
-
 pub struct MiddlewareChainFuture<F: Future, O, E> {
     s: Option<Box<Future<Item = O, Error = E> + Send>>,
     f: F,
@@ -168,7 +150,7 @@ where
         MiddlewareChainFuture::new(Box::new(fut), fut2, sx)
     }
 
-    // fn check(&self, req: &Context<ClientEvent>) -> bool {
-    //     self.f.check(req)
-    // }
+    fn should_call(&self, req: &Self::Input) -> bool {
+        self.f.should_call(req)
+    }
 }

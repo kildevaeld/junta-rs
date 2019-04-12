@@ -11,7 +11,7 @@ pub trait Service {
 
     fn call(&self, input: Self::Input) -> Self::Future;
 
-    fn should_call(&self, intput: &Self::Input) -> bool {
+    fn should_call(&self, _intput: &Self::Input) -> bool {
         true
     }
 }
@@ -69,7 +69,6 @@ where
 }
 
 pub fn service_fn<F, I, U>(service: F) -> ServiceFn<F, I>
-//impl Service<Input = I, Output = U::Item, Error = U::Error, Future = U::Future>
 where
     F: Fn(I) -> U,
     U: IntoFuture,
@@ -80,7 +79,6 @@ where
         _i: PhantomData,
     }
 }
-
 
 pub struct CheckService<F, S> {
     check: F,
@@ -130,15 +128,14 @@ pub fn check_fn<F, S>(check: F, service: S) -> CheckService<F, S> {
     CheckService::new(check, service)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use tokio;
     #[test]
     fn test_service() {
-        let service = service_fn(|ctx| Result::<i32, String>::Ok(200));
+        let service = service_fn(|_ctx| Result::<i32, String>::Ok(200));
         let fut = service.call("Hello, World");
-        tokio::run(fut.map(|o| assert_eq!(0, 200)).map_err(|e| panic!(e)));
+        tokio::run(fut.map(|_o| assert_eq!(0, 200)).map_err(|e| panic!(e)));
     }
 }

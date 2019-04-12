@@ -3,7 +3,7 @@ mod middleware;
 mod middleware_chain;
 mod service;
 mod service_chain;
-mod utils;
+pub mod utils;
 
 pub mod prelude {
     pub use super::error::*;
