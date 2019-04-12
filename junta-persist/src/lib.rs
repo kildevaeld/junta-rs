@@ -7,7 +7,7 @@
 //! framework.
 
 use junta::prelude::*;
-use junta_middleware::{Middleware, Next, NextFuture};
+use junta_service::prelude::{Middleware, Next, NextFuture, ServiceError};
 use plugins::*;
 use std::error::Error;
 use std::fmt;
@@ -38,7 +38,7 @@ impl fmt::Display for PersistentError {
 impl From<PersistentError> for JuntaError {
     fn from(error: PersistentError) -> JuntaError {
         //ValseError::new(error, StatusCode::INTERNAL_SERVER_ERROR)
-        JuntaError::new(JuntaErrorKind::Error(error.to_string()))
+        JuntaError::new(JuntaErrorKind::Error(Box::new(error)))
     }
 }
 
@@ -77,6 +77,14 @@ impl<T> PersistentInto<Arc<RwLock<T>>> for T {
     }
 }
 
+/// Documentation
+pub trait PersistentItem {
+    /// Documentation
+    type Item: Clone;
+    /// Documentation
+    fn data(&self) -> &Self::Item;
+}
+
 /// Middleware for data that persists between requests with read and write capabilities.
 ///
 /// The data is stored behind a `RwLock`, so multiple read locks
@@ -96,6 +104,13 @@ pub struct State<P: Key> {
     data: Arc<RwLock<P::Value>>,
 }
 
+impl<P: Key> PersistentItem for State<P> {
+    type Item = Arc<RwLock<P::Value>>;
+    fn data(&self) -> &Self::Item {
+        &self.data
+    }
+}
+
 /// Middleware for data that persists between Requests with read-only capabilities.
 ///
 /// The data is stored behind an Arc, so multiple threads can have
@@ -109,6 +124,13 @@ pub struct State<P: Key> {
 /// accessed through `request.get::<Read<P,I>>()` as an `Arc<P::Value>`.
 pub struct Read<P: Key> {
     data: Arc<P::Value>,
+}
+
+impl<P: Key> PersistentItem for Read<P> {
+    type Item = Arc<P::Value>;
+    fn data(&self) -> &Self::Item {
+        &self.data
+    }
 }
 
 /// Middleware for data that persists between Requests for data which mostly
@@ -126,6 +148,13 @@ pub struct Read<P: Key> {
 /// accessed through `request.get::<Write<P,I>>()` as an `Arc<Mutex<P::Value>>`.
 pub struct Write<P: Key> {
     data: Arc<Mutex<P::Value>>,
+}
+
+impl<P: Key> PersistentItem for Write<P> {
+    type Item = Arc<Mutex<P::Value>>;
+    fn data(&self) -> &Self::Item {
+        &self.data
+    }
 }
 
 impl<P: Key> Clone for Read<P>
@@ -221,38 +250,38 @@ where
     }
 }
 
-impl<P: Key, I: Extensible> Middleware<I> for State<P>
-where
-    P::Value: Send + Sync,
-{
-    type Future = NextFuture;
-    fn call(&self, mut req: I, next: Next<I>) -> Self::Future {
-        req.extensions_mut().insert::<State<P>>(self.data.clone());
-        next.execute(req)
-    }
-}
+// impl<P: Key, I: Extensible> Middleware<I> for State<P>
+// where
+//     P::Value: Send + Sync,
+// {
+//     type Future = NextFuture;
+//     fn call(&self, mut req: I, next: Next<I>) -> Self::Future {
+//         req.extensions_mut().insert::<State<P>>(self.data.clone());
+//         next.execute(req)
+//     }
+// }
 
-impl<P: Key, I: Extensible> Middleware<I> for Read<P>
-where
-    P::Value: Send + Sync,
-{
-    type Future = NextFuture;
-    fn call(&self, mut req: I, next: Next<I>) -> Self::Future {
-        req.extensions_mut().insert::<Read<P>>(self.data.clone());
-        next.execute(req)
-    }
-}
+// impl<P: Key, I: Extensible> Middleware<I> for Read<P>
+// where
+//     P::Value: Send + Sync,
+// {
+//     type Future = NextFuture;
+//     fn call(&self, mut req: I, next: Next<I>) -> Self::Future {
+//         req.extensions_mut().insert::<Read<P>>(self.data.clone());
+//         next.execute(req)
+//     }
+// }
 
-impl<P: Key, I: Extensible> Middleware<I> for Write<P>
-where
-    P::Value: Send + Sync,
-{
-    type Future = NextFuture;
-    fn call(&self, mut req: I, next: Next<I>) -> Self::Future {
-        req.extensions_mut().insert::<Write<P>>(self.data.clone());
-        next.execute(req)
-    }
-}
+// impl<P: Key, I: Extensible> Middleware<I> for Write<P>
+// where
+//     P::Value: Send + Sync,
+// {
+//     type Future = NextFuture;
+//     fn call(&self, mut req: I, next: Next<I>) -> Self::Future {
+//         req.extensions_mut().insert::<Write<P>>(self.data.clone());
+//         next.execute(req)
+//     }
+// }
 
 impl<P: Key> State<P>
 where
@@ -261,13 +290,15 @@ where
     /// Construct a new `State` middleware
     ///
     /// The data is initialized with the passed-in value.
-    pub fn middleware<T>(start: T) -> State<P>
+    pub fn middleware<T, I: Extensible, O, E: From<ServiceError>>(
+        start: T,
+    ) -> PersistMiddleware<P, State<P>, I, O, E>
     where
         T: PersistentInto<Arc<RwLock<P::Value>>>,
     {
-        State {
+        PersistMiddleware::new(State {
             data: start.persistent_into(),
-        }
+        })
     }
 }
 
@@ -278,13 +309,15 @@ where
     /// Construct a new `Read` middleware
     ///
     /// The data is initialized with the passed-in value.
-    pub fn middleware<T>(start: T) -> Read<P>
+    pub fn middleware<T, I: Extensible, O, E: From<ServiceError>>(
+        start: T,
+    ) -> PersistMiddleware<P, Read<P>, I, O, E>
     where
         T: PersistentInto<Arc<P::Value>>,
     {
-        Read {
+        PersistMiddleware::new(Read {
             data: start.persistent_into(),
-        }
+        })
     }
 }
 
@@ -295,12 +328,55 @@ where
     /// Construct a new `Write` middleware
     ///
     /// The data is initialized with the passed-in value.
-    pub fn middleware<T>(start: T) -> Write<P>
+    pub fn middleware<T, I: Extensible, O, E: From<ServiceError>>(
+        start: T,
+    ) -> PersistMiddleware<P, Write<P>, I, O, E>
     where
         T: PersistentInto<Arc<Mutex<P::Value>>>,
     {
-        Write {
+        PersistMiddleware::new(Write {
             data: start.persistent_into(),
+        })
+    }
+}
+
+use std::marker::PhantomData;
+/// Documentation
+pub struct PersistMiddleware<P, T, I, O, E> {
+    inner: T,
+    _p: PhantomData<P>,
+    _i: PhantomData<I>,
+    _o: PhantomData<O>,
+    _e: PhantomData<E>,
+}
+
+impl<P, T, I, O, E: From<ServiceError>> PersistMiddleware<P, T, I, O, E> {
+    /// Documentation
+    pub fn new(inner: T) -> PersistMiddleware<P, T, I, O, E> {
+        PersistMiddleware {
+            inner,
+            _p: PhantomData,
+            _i: PhantomData,
+            _o: PhantomData,
+            _e: PhantomData,
         }
+    }
+}
+
+impl<P: Key, T: PersistentItem + Key, I: Extensible, O, E> Middleware
+    for PersistMiddleware<P, T, I, O, E>
+where
+    P::Value: Send + Sync,
+    T: Key<Value = <T as PersistentItem>::Item>,
+    <T as Key>::Value: Send + Sync,
+    E: From<ServiceError>,
+{
+    type Input = I;
+    type Output = O;
+    type Error = E;
+    type Future = NextFuture<O, E>;
+    fn call(&self, mut req: I, next: Next<I, O, E>) -> Self::Future {
+        req.extensions_mut().insert::<T>(self.inner.data().clone());
+        next.call(req)
     }
 }

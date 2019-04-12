@@ -1,3 +1,5 @@
+use super::error::*;
+use super::utils::*;
 use futures::prelude::*;
 
 pub trait Service {
@@ -8,6 +10,10 @@ pub trait Service {
     type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
 
     fn call(&self, input: Self::Input) -> Self::Future;
+
+    fn should_call(&self, intput: &Self::Input) -> bool {
+        true
+    }
 }
 
 pub trait IntoService {
@@ -23,6 +29,20 @@ pub trait IntoService {
     >;
 
     fn into_service(self) -> Self::Service;
+}
+
+impl<T> IntoService for T
+where
+    T: Service,
+{
+    type Input = T::Input;
+    type Output = T::Output;
+    type Error = T::Error;
+    type Future = T::Future;
+    type Service = T;
+    fn into_service(self) -> Self::Service {
+        self
+    }
 }
 
 use std::marker::PhantomData;
@@ -48,9 +68,8 @@ where
     }
 }
 
-pub fn service_fn<F, I, U>(
-    service: F,
-) -> impl Service<Input = I, Output = U::Item, Error = U::Error, Future = U::Future>
+pub fn service_fn<F, I, U>(service: F) -> ServiceFn<F, I>
+//impl Service<Input = I, Output = U::Item, Error = U::Error, Future = U::Future>
 where
     F: Fn(I) -> U,
     U: IntoFuture,
@@ -61,6 +80,56 @@ where
         _i: PhantomData,
     }
 }
+
+
+pub struct CheckService<F, S> {
+    check: F,
+    service: S,
+}
+
+impl<F, S> Service for CheckService<F, S>
+where
+    S: Service,
+    F: Fn(&S::Input) -> bool,
+    <S as Service>::Error: From<ServiceError> + Send + 'static,
+    <S as Service>::Output: Send + 'static,
+{
+    type Input = S::Input;
+    type Output = S::Output;
+    type Error = S::Error;
+    type Future = OneOfTwoFuture<
+        Self::Output,
+        Self::Error,
+        S::Future,
+        futures::future::FutureResult<Self::Output, Self::Error>,
+    >;
+
+    fn call(&self, input: Self::Input) -> Self::Future {
+        let fut = if (self.check)(&input) {
+            OneOfTwo::Future1(self.service.call(input))
+        } else {
+            OneOfTwo::Future2(futures::future::err(Self::Error::from(
+                ServiceError::InvalidRequest,
+            )))
+        };
+        OneOfTwoFuture::new(fut)
+    }
+
+    fn should_call(&self, input: &Self::Input) -> bool {
+        (self.check)(input)
+    }
+}
+
+impl<F, S> CheckService<F, S> {
+    pub fn new(check: F, service: S) -> CheckService<F, S> {
+        CheckService { check, service }
+    }
+}
+
+pub fn check_fn<F, S>(check: F, service: S) -> CheckService<F, S> {
+    CheckService::new(check, service)
+}
+
 
 #[cfg(test)]
 mod tests {

@@ -23,20 +23,16 @@ impl Event {
     }
     pub fn try_from(msg: &MessageContent) -> JuntaResult<Event> {
         match msg {
-            MessageContent::Binary(b) => {
-                serde_cbor::from_slice(b).map_err(|e| JuntaErrorKind::Error(e.to_string()).into())
-            }
-            MessageContent::Text(b) => {
-                serde_json::from_str(b).map_err(|e| JuntaErrorKind::Error(e.to_string()).into())
-            }
+            MessageContent::Binary(b) => Ok(serde_cbor::from_slice(b)?),
+            MessageContent::Text(b) => Ok(serde_json::from_str(b)?),
         }
     }
 
     pub fn to_binary(&self) -> JuntaResult<Vec<u8>> {
-        serde_cbor::to_vec(&self).map_err(|e| JuntaErrorKind::Error(e.to_string()).into())
+        Ok(serde_cbor::to_vec(&self)?)
     }
 
     pub fn to_text(&self) -> JuntaResult<String> {
-        serde_json::to_string(&self).map_err(|e| JuntaErrorKind::Error(e.to_string()).into())
+        Ok(serde_json::to_string(&self)?)
     }
 }

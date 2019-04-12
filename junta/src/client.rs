@@ -1,11 +1,11 @@
 use super::error::{JuntaError, JuntaErrorKind};
-use super::server::{Broadcast, MessageContent, Server};
+use super::server::{Broadcast, MessageContent};
 use atomic_counter::AtomicCounter;
 use futures::prelude::*;
 use futures::sink::Sink;
 use futures::stream::{SplitSink, SplitStream};
 use futures::sync::mpsc::{Receiver, Sender};
-use std::fmt;
+use junta_service::error::ServiceError;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::codec::Framed;
@@ -28,7 +28,7 @@ macro_rules! poll_stream {
                 Some(())
             }
             Ok(Async::NotReady) => None,
-            Err(_) => return Err(JuntaErrorKind::Unknown.into()),
+            Err(e) => return Err(JuntaErrorKind::Service(ServiceError::ReceiverClosed).into()),
         }
     };
 }
@@ -40,16 +40,16 @@ pub enum ClientEvent {
     Close(Option<CloseData>),
 }
 
-impl ClientEvent {
-    fn from(msg: OwnedMessage) -> ClientEvent {
-        match msg {
-            OwnedMessage::Binary(bs) => ClientEvent::Message(MessageContent::Binary(bs)),
-            OwnedMessage::Text(text) => ClientEvent::Message(MessageContent::Text(text)),
-            OwnedMessage::Close(close) => ClientEvent::Close(close),
-            _ => unreachable!("invalid"),
-        }
-    }
-}
+// impl ClientEvent {
+//     fn from(msg: OwnedMessage) -> ClientEvent {
+//         match msg {
+//             OwnedMessage::Binary(bs) => ClientEvent::Message(MessageContent::Binary(bs)),
+//             OwnedMessage::Text(text) => ClientEvent::Message(MessageContent::Text(text)),
+//             OwnedMessage::Close(close) => ClientEvent::Close(close),
+//             _ => unreachable!("invalid"),
+//         }
+//     }
+// }
 
 //#[derive(Clone)]
 pub struct Client {
@@ -100,6 +100,10 @@ impl Client {
     pub fn logger(&self) -> &slog::Logger {
         &self.logger
     }
+
+    pub fn address(&self) -> &SocketAddr {
+        &self.address
+    }
 }
 
 impl std::fmt::Debug for Client {
@@ -121,7 +125,7 @@ impl PartialEq for Client {
 // }
 
 pub struct ClientFuture {
-    id: Uuid,
+    //id: Uuid,
     sink: SplitSink<Framed<TcpStream, MessageCodec<OwnedMessage>>>,
     stream: SplitStream<Framed<TcpStream, MessageCodec<OwnedMessage>>>,
     sender: Sender<OwnedMessage>,
@@ -130,14 +134,14 @@ pub struct ClientFuture {
 
 impl ClientFuture {
     pub fn new(
-        id: uuid::Uuid,
+        //id: uuid::Uuid,
         sink: SplitSink<Framed<TcpStream, MessageCodec<OwnedMessage>>>,
         stream: SplitStream<Framed<TcpStream, MessageCodec<OwnedMessage>>>,
         sender: Sender<OwnedMessage>,
         recv: Receiver<OwnedMessage>,
     ) -> ClientFuture {
         ClientFuture {
-            id,
+            //id,
             sink,
             stream,
             sender,
@@ -185,7 +189,7 @@ impl Future for ClientFuture {
                 //return Ok(Async::Ready(()));
                 ()
             }
-            Err(_) => return Err(JuntaErrorKind::Unknown.into()),
+            Err(e) => return Err(JuntaErrorKind::Transport(e).into()),
         };
 
         Ok(Async::NotReady)

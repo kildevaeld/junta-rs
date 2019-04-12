@@ -1,6 +1,7 @@
 use super::event::*;
 use super::protocol::{Protocol, ProtocolService};
 use junta::prelude::*;
+use junta_service::prelude::*;
 
 pub struct ProtocolChain<S1, S2> {
     s1: S1,
@@ -34,7 +35,7 @@ where
             OneOfTree::Future2(self.s2.execute(ctx))
         } else {
             OneOfTree::Future3(futures::future::err(
-                JuntaErrorKind::Error("invalid request".to_string()).into(),
+                JuntaErrorKind::Unknown("invalid request".to_string()).into(),
             ))
         };
         OneOfTreeFuture::new(fut)
@@ -46,14 +47,17 @@ where
     }
 }
 
-impl<S1, S2> IntoHandler for ProtocolChain<S1, S2>
+impl<S1, S2> IntoService for ProtocolChain<S1, S2>
 where
     S1: Protocol + 'static,
     S2: Protocol + 'static,
 {
-    type Future = <ProtocolService<Self> as Handler>::Future; //Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
-    type Handler = ProtocolService<Self>;
-    fn into_handler(self) -> Self::Handler {
+    type Input = Context<ClientEvent>;
+    type Output = ();
+    type Error = JuntaError;
+    type Future = <ProtocolService<Self> as Service>::Future; //Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
+    type Service = ProtocolService<Self>;
+    fn into_service(self) -> Self::Service {
         ProtocolService::new(self)
     }
 }

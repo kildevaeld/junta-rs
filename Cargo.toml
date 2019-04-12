@@ -4,6 +4,6 @@ members = [
     "junta",
     "junta-protocol",
     "junta-service",
-    "junta-middleware",
+    #"junta-middleware",
     "junta-persist"
 ]

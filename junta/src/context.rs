@@ -81,16 +81,12 @@ impl<I> Context<I> {
 
     #[cfg(feature = "encoding")]
     pub fn encode_binary<S: serde::Serialize>(&self, data: &S) -> JuntaResult<MessageContent> {
-        Ok(MessageContent::Binary(
-            serde_cbor::to_vec(data).map_err(|_e| JuntaError::new(JuntaErrorKind::Unknown))?,
-        ))
+        Ok(MessageContent::Binary(serde_cbor::to_vec(data)?))
     }
 
     #[cfg(feature = "encoding")]
     pub fn encode_text<S: serde::Serialize>(&self, data: &S) -> JuntaResult<MessageContent> {
-        Ok(MessageContent::Text(
-            serde_json::to_string(data).map_err(|_e| JuntaError::new(JuntaErrorKind::Unknown))?,
-        ))
+        Ok(MessageContent::Text(serde_json::to_string(data)?))
     }
 
     pub fn binary(&self) -> bool {
@@ -103,12 +99,10 @@ impl Context<ClientEvent> {
     pub fn decode<'a, D: serde::de::Deserialize<'a>>(&'a self) -> JuntaResult<D> {
         match self.message() {
             ClientEvent::Message(MessageContent::Binary(slice)) => {
-                serde_cbor::from_slice(slice.as_slice())
-                    .map_err(|e| JuntaError::new(JuntaErrorKind::Error(e.to_string())))
+                Ok(serde_cbor::from_slice(slice.as_slice())?)
             }
-            ClientEvent::Message(MessageContent::Text(text)) => serde_json::from_str(&text)
-                .map_err(|e| JuntaError::new(JuntaErrorKind::Error(e.to_string()))),
-            _ => Err(JuntaErrorKind::Error("invalid".to_string()).into()),
+            ClientEvent::Message(MessageContent::Text(text)) => Ok(serde_json::from_str(&text)?),
+            _ => Err(JuntaErrorKind::Unknown("invalid".to_string()).into()),
         }
     }
 }
@@ -117,10 +111,8 @@ impl Context<MessageContent> {
     #[cfg(feature = "encoding")]
     pub fn decode<'a, D: serde::de::Deserialize<'a>>(&'a self) -> JuntaResult<D> {
         match self.message() {
-            MessageContent::Binary(slice) => serde_cbor::from_slice(slice.as_slice())
-                .map_err(|e| JuntaError::new(JuntaErrorKind::Error(e.to_string()))),
-            MessageContent::Text(text) => serde_json::from_str(&text)
-                .map_err(|e| JuntaError::new(JuntaErrorKind::Error(e.to_string()))),
+            MessageContent::Binary(slice) => Ok(serde_cbor::from_slice(slice.as_slice())?),
+            MessageContent::Text(text) => Ok(serde_json::from_str(&text)?),
         }
     }
 }
@@ -128,16 +120,14 @@ impl Context<MessageContent> {
 #[cfg(feature = "encoding")]
 impl Context<serde_cbor::Value> {
     pub fn decode<D: serde::de::DeserializeOwned>(&self) -> JuntaResult<D> {
-        serde_cbor::from_value(self.message().clone())
-            .map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
+        Ok(serde_cbor::from_value(self.message().clone())?)
     }
 }
 
 #[cfg(feature = "encoding")]
 impl Context<serde_json::Value> {
     pub fn decode<D: serde::de::DeserializeOwned>(&self) -> JuntaResult<D> {
-        serde_json::from_value(self.message().clone())
-            .map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
+        Ok(serde_json::from_value(self.message().clone())?)
     }
 }
 
@@ -203,12 +193,10 @@ impl<'a, I> BorrowedContext<'a, I, ClientEvent> {
     pub fn decode<'de, D: serde::de::Deserialize<'de>>(&'de self) -> JuntaResult<D> {
         match self.message() {
             ClientEvent::Message(MessageContent::Binary(slice)) => {
-                serde_cbor::from_slice(slice.as_slice())
-                    .map_err(|e| JuntaError::new(JuntaErrorKind::Error(e.to_string())))
+                Ok(serde_cbor::from_slice(slice.as_slice())?)
             }
-            ClientEvent::Message(MessageContent::Text(text)) => serde_json::from_str(&text)
-                .map_err(|e| JuntaError::new(JuntaErrorKind::Error(e.to_string()))),
-            _ => Err(JuntaErrorKind::Error("invalid".to_string()).into()),
+            ClientEvent::Message(MessageContent::Text(text)) => Ok(serde_json::from_str(&text)?),
+            _ => Err(JuntaErrorKind::Unknown("invalid".to_string()).into()),
         }
     }
 }
@@ -267,12 +255,10 @@ impl<I> ChildContext<I, ClientEvent> {
     pub fn decode<'de, D: serde::de::Deserialize<'de>>(&'de self) -> JuntaResult<D> {
         match self.message() {
             ClientEvent::Message(MessageContent::Binary(slice)) => {
-                serde_cbor::from_slice(slice.as_slice())
-                    .map_err(|e| JuntaError::new(JuntaErrorKind::Error(e.to_string())))
+                Ok(serde_cbor::from_slice(slice.as_slice())?)
             }
-            ClientEvent::Message(MessageContent::Text(text)) => serde_json::from_str(&text)
-                .map_err(|e| JuntaError::new(JuntaErrorKind::Error(e.to_string()))),
-            _ => Err(JuntaErrorKind::Error("invalid".to_string()).into()),
+            ClientEvent::Message(MessageContent::Text(text)) => Ok(serde_json::from_str(&text)?),
+            _ => Err(JuntaErrorKind::Unknown("invalid".to_string()).into()),
         }
     }
 }

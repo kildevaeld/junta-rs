@@ -1,7 +1,6 @@
 use futures::future;
 use futures::prelude::*;
 use junta::prelude::*;
-use junta_persist::*;
 use junta_service::prelude::*;
 use plugins::*;
 use slog::{Drain, Logger};
@@ -19,7 +18,6 @@ use tokio::prelude::FutureExt;
 //     }
 // }
 
-#[derive(Debug)]
 struct Store {}
 
 impl Key for Store {
@@ -34,23 +32,28 @@ fn main() {
 
     let mut runtime = tokio::runtime::Builder::new().build().unwrap();
 
-    let m = Read::<Store>::middleware(Store {});
-
-    let m = m
-        // .stack(middleware_fn(|ctx, next| {
-        //     //println!("Middleware");
-        //     next.execute(ctx)
-        // }))
-        .then(service_fn(|mut ctx: Context<ClientEvent>| {
-            let store = ctx.get::<Read<Store>>()?;
-            println!("Hello {:?}", store);
-            Ok(())
-        })); //.stack(middleware_fn(|ctx, next| Ok(())));
-
     let fut = Server::bind("127.0.0.1:2794")
         .unwrap()
         //.logger(logger)
-        .serve(runtime.executor(), m)
+        .serve(
+            runtime.executor(),
+            check_fn(
+                |ctx: &Context<ClientEvent>| {
+                    let text = match ctx.message() {
+                        ClientEvent::Message(MessageContent::Text(text)) => text,
+                        _ => return false,
+                    };
+                    return text == "greeting";
+                },
+                service_fn(|ctx: Context<ClientEvent>| {
+                    ctx.client().send(MessageContent::Text("Hello".to_string()))
+                }),
+            )
+            .or(service_fn(|ctx: Context<ClientEvent>| {
+                ctx.client()
+                    .send(MessageContent::Text("Hello 2".to_string()))
+            })),
+        )
         .unwrap();
 
     runtime.block_on(fut).unwrap();

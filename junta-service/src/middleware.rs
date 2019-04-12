@@ -77,6 +77,37 @@ pub trait Middleware {
     ) -> Self::Future;
 }
 
+pub trait IntoMiddleware {
+    type Input;
+    type Output;
+    type Error;
+
+    type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
+    type Middleware: Middleware<
+        Input = Self::Input,
+        Output = Self::Output,
+        Error = Self::Error,
+        Future = Self::Future,
+    >;
+    fn into_middleware(self) -> Self::Middleware;
+}
+
+impl<T> IntoMiddleware for T
+where
+    T: Middleware,
+    <T as Middleware>::Future: Send + 'static,
+{
+    type Input = T::Input;
+    type Output = T::Output;
+    type Error = T::Error;
+    type Future = T::Future;
+    type Middleware = T;
+
+    fn into_middleware(self) -> Self::Middleware {
+        self
+    }
+}
+
 pub trait ThenService: Middleware + Sized + Send + Sync {
     fn then<S: IntoService<Input = Self::Input>>(
         self,

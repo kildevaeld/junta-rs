@@ -1,9 +1,9 @@
 use super::client::{Client, ClientEvent, ClientFuture};
 use super::context::Context;
 use super::error::{JuntaError, JuntaErrorKind, JuntaResult};
-use super::handler::{Handler, IntoHandler};
 use super::utils::{OneOfFour, OneOfFourFuture, OneOfTwo, OneOfTwoFuture};
 use futures::prelude::*;
+use junta_service::prelude::*;
 use slog::{Discard, Logger};
 use std::collections::HashMap;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -14,7 +14,7 @@ use uuid::Uuid;
 use websocket::message::OwnedMessage;
 use websocket::r#async::Server as WSServer;
 use websocket::server::InvalidConnection;
-use websocket::{CloseData, WebSocketError};
+use websocket::WebSocketError;
 
 pub type ClientList = Arc<RwLock<HashMap<Uuid, Arc<Client>>>>;
 
@@ -35,7 +35,7 @@ impl Broadcast for Broadcaster {
     fn send_all(&self, msg: MessageContent) -> Self::Future {
         let clients = self.clients.read().unwrap();
         let mut promises = Vec::new();
-        for (k, v) in clients.iter() {
+        for (_, v) in clients.iter() {
             promises.push(v.send(msg.clone()))
         }
         self.executor.spawn(
@@ -51,7 +51,7 @@ impl Broadcast for Broadcaster {
     fn broadcast(&self, client: &Client, msg: MessageContent) -> Self::Future {
         let clients = self.clients.read().unwrap();
         let mut promises = Vec::new();
-        for (k, v) in clients.iter() {
+        for (_, v) in clients.iter() {
             if v.as_ref() == client {
                 continue;
             }
@@ -98,12 +98,16 @@ impl ServerBuilder {
         self
     }
 
-    pub fn serve<H: IntoHandler>(self, executor: TaskExecutor, handler: H) -> JuntaResult<Server> {
+    pub fn serve<H>(self, executor: TaskExecutor, handler: H) -> JuntaResult<Server>
+    where
+        H: IntoService<Input = Context<ClientEvent>, Output = (), Error = JuntaError>,
+        <H as IntoService>::Service: 'static + Send + Sync,
+    {
         let clients = Arc::new(RwLock::new(HashMap::new()));
         Ok(Server {
             inner: ServerHandler::new(
                 executor,
-                Arc::new(handler.into_handler()),
+                Arc::new(handler.into_service()),
                 clients,
                 self.logger,
                 self.addr,
@@ -138,19 +142,25 @@ struct ServerHandler {
 }
 
 impl ServerHandler {
-    pub fn new<H: Handler + 'static>(
+    pub fn new<H: Service + 'static>(
         executor: TaskExecutor,
         handler: Arc<H>,
         clients: ClientList,
         logger: Logger,
         addr: SocketAddr,
-    ) -> JuntaResult<ServerHandler> {
+    ) -> JuntaResult<ServerHandler>
+    where
+        H: Service<Input = Context<ClientEvent>, Output = (), Error = JuntaError>
+            + 'static
+            + Send
+            + Sync,
+    {
         let counter = Arc::new(atomic_counter::RelaxedCounter::new(1));
 
         let work = WSServer::bind(addr, &Handle::default())?
             .incoming()
             .map_err(|InvalidConnection { error, .. }| {
-                JuntaError::new(JuntaErrorKind::WebSocket(WebSocketError::from(error)))
+                JuntaError::new(JuntaErrorKind::Transport(WebSocketError::from(error)))
             })
             .from_err::<JuntaError>()
             .for_each(move |(upgrade, addr)| {
@@ -169,7 +179,7 @@ impl ServerHandler {
                         upgrade
                             .use_protocol("rust-websocket")
                             .accept()
-                            .map_err(|e| JuntaError::new(JuntaErrorKind::WebSocket(e)))
+                            .map_err(|e| JuntaError::new(JuntaErrorKind::Transport(e)))
                             .and_then(move |(client, _)| {
                                 ServerHandler::connect(
                                     clients, logger, t, handler, client, addr, counter,
@@ -185,7 +195,7 @@ impl ServerHandler {
         })
     }
 
-    fn connect<H: Handler + 'static>(
+    fn connect<H: Service + 'static>(
         clients: ClientList,
         logger: Logger,
         executor: TaskExecutor,
@@ -196,7 +206,13 @@ impl ServerHandler {
         >,
         addr: SocketAddr,
         counter: Arc<atomic_counter::RelaxedCounter>,
-    ) -> impl Future<Item = (), Error = JuntaError> {
+    ) -> impl Future<Item = (), Error = JuntaError>
+    where
+        H: Service<Input = Context<ClientEvent>, Output = (), Error = JuntaError>
+            + 'static
+            + Send
+            + Sync,
+    {
         let id = Uuid::new_v4();
 
         let logger = logger.new(slog::o! {
@@ -233,12 +249,12 @@ impl ServerHandler {
         let exec = executor.clone();
         let logger = logger.clone();
         let v = handler
-            .handle(Context::<ClientEvent>::new(
+            .call(Context::<ClientEvent>::new(
                 cl.clone(),
                 ClientEvent::Connect,
             ))
             .and_then(|_| {
-                rx.map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
+                rx.map_err(|_| JuntaError::from(ServiceError::ReceiverClosed))
                     .for_each(move |msg| {
                         let cl = cl.clone();
                         let fut = match msg {
@@ -248,7 +264,7 @@ impl ServerHandler {
                                 let client = cl.clone();
                                 let logger = logger.clone();
                                 let out = handler
-                                    .handle(Context::<ClientEvent>::new(
+                                    .call(Context::<ClientEvent>::new(
                                         cl,
                                         ClientEvent::Close(close_data),
                                     ))
@@ -272,36 +288,35 @@ impl ServerHandler {
                             OwnedMessage::Pong(_) => OneOfFour::Future3(futures::future::ok(())),
                             OwnedMessage::Binary(data) => {
                                 debug!(logger, "client sent binary message");
-                                OneOfFour::Future4(handler.handle(Context::<ClientEvent>::new(
+                                OneOfFour::Future4(handler.call(Context::<ClientEvent>::new(
                                     cl,
                                     ClientEvent::Message(MessageContent::Binary(data)),
                                 )))
                             }
                             OwnedMessage::Text(data) => {
                                 debug!(logger, "client sent text message");
-                                OneOfFour::Future4(handler.handle(Context::<ClientEvent>::new(
+                                OneOfFour::Future4(handler.call(Context::<ClientEvent>::new(
                                     cl,
                                     ClientEvent::Message(MessageContent::Text(data)),
                                 )))
                             }
                         };
 
-                        exec.spawn(OneOfFourFuture::new(fut).map_err(|e: JuntaError| ()));
+                        exec.spawn(OneOfFourFuture::new(fut).map_err(|_: JuntaError| ()));
                         futures::future::ok(())
                     })
             });
 
-        let fut = ClientFuture::new(id, sink, stream, sx, rx1);
+        let fut = ClientFuture::new(sink, stream, sx, rx1);
         executor.spawn(
             v.join(fut)
                 .and_then(move |_| {
-                    let id = cloned_client.id().clone();
                     let logger = cloned_client.logger().clone();
                     let elogger = logger.clone();
                     cloned_list.write().unwrap().remove(cloned_client.id());
 
                     cloned_handler
-                        .handle(Context::<ClientEvent>::new(
+                        .call(Context::<ClientEvent>::new(
                             cloned_client,
                             ClientEvent::Close(None),
                         ))

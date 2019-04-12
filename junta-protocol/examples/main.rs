@@ -34,16 +34,23 @@ fn main() {
 
         let client = ctx.client().clone();
 
-        ctx.request("greeting", &()).and_then(move |req: String| {
-            println!("did receive {}", req);
-            ctx.client().broadcast(MessageContent::Text(format!(
-                "hello from again {}",
-                ctx.client().id()
-            )));
-            Ok(m)
-        })
+        tokio::spawn(
+            ctx.request("greeting", &())
+                .and_then(move |req: String| {
+                    println!("did receive {}", req);
+                    ctx.client().broadcast(MessageContent::Text(format!(
+                        "hello from again {}",
+                        ctx.client().id()
+                    )))
+                    //Ok(m)
+                })
+                .map_err(|e| {
+                    println!("could not send {}", e);
+                    ()
+                }),
+        );
 
-        //Ok(m)
+        Ok(m)
 
         //Ok(m)
     })

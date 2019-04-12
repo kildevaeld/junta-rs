@@ -1,79 +1,99 @@
 use super::event::Event;
-use super::protocol::{IntoProtocol, Protocol};
+use super::protocol::*;
 use futures::prelude::*;
-use futures::sync::oneshot::{Receiver, Sender};
+use futures::sync::oneshot::Sender;
 use junta::prelude::*;
-use junta_middleware::{IntoMiddleware, Middleware, Next};
+use junta_service::prelude::*;
 use std::sync::Arc;
-// use junta_service::*;
 
 #[derive(Clone)]
-pub struct ProtocolMiddlewareChain<S, F> {
-    s: Arc<S>,
-    f: Arc<F>,
+pub struct ProtocolMiddlewareChain<S1, S2> {
+    s1: Arc<S1>,
+    s2: Arc<S2>,
 }
 
-impl<S: Middleware<I>, F, I: Send + 'static> Middleware<I> for ProtocolMiddlewareChain<S, F>
+impl<S1: Send + Sync + 'static, S2: Send + Sync + 'static> Middleware
+    for ProtocolMiddlewareChain<S1, S2>
 where
-    S: Middleware<I> + Send + Sync + 'static,
-    F: Middleware<I> + Send + Sync + 'static,
-    <F as Middleware<I>>::Future: Sync,
-    //<S as Middleware>::Item: Send,
+    S1: Middleware,
+    <S1 as Middleware>::Input: Send + 'static,
+    <S1 as Middleware>::Output: Send + 'static,
+    <S1 as Middleware>::Error: Send + 'static + From<ServiceError>,
+    S2: Middleware<
+        Input = <S1 as Middleware>::Input,
+        Output = <S1 as Middleware>::Output,
+        Error = <S1 as Middleware>::Error,
+    >,
+    <S2 as Middleware>::Future: Send + 'static,
 {
     //type Item = S::Item;
-    type Future = ProtocolMiddlewareChainFuture<S::Future>;
-    fn call(&self, req: I, next: Next<I>) -> Self::Future {
+    type Input = S1::Input;
+    type Output = S1::Output;
+    type Error = S1::Error;
+    type Future = ProtocolMiddlewareChainFuture<S1::Future, Self::Output, Self::Error>;
+    fn call(
+        &self,
+        req: Self::Input,
+        next: Next<Self::Input, Self::Output, Self::Error>,
+    ) -> Self::Future {
         let (n, sx, rx) = Next::new();
-        let f = self.f.clone();
+        let f = self.s2.clone();
         let fut = rx
-            .map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
+            .map_err(|_| Self::Error::from(ServiceError::ReceiverClosed))
             .and_then(move |req| f.call(req, next));
 
-        let fut2 = self.s.call(req, n);
+        let fut2 = self.s1.call(req, n);
         ProtocolMiddlewareChainFuture::new(Box::new(fut), fut2, sx)
     }
 }
 
-pub trait ProtocolMiddlewareChainable<I>: Sized {
-    fn stack<M: IntoMiddleware<I>>(self, other: M) -> ProtocolMiddlewareChain<Self, M::Middleware>;
+pub trait ProtocolMiddlewareChainable: Sized {
+    fn stack<M: IntoMiddleware>(self, other: M) -> ProtocolMiddlewareChain<Self, M::Middleware>;
 }
 
-impl<T, I> ProtocolMiddlewareChainable<I> for T
+impl<T> ProtocolMiddlewareChainable for T
 where
-    T: Middleware<I>,
+    T: Middleware,
 {
-    fn stack<M: IntoMiddleware<I>>(self, other: M) -> ProtocolMiddlewareChain<Self, M::Middleware> {
+    fn stack<M: IntoMiddleware>(self, other: M) -> ProtocolMiddlewareChain<Self, M::Middleware> {
         ProtocolMiddlewareChain {
-            s: Arc::new(self),
-            f: Arc::new(other.into_middleware()),
+            s1: Arc::new(self),
+            s2: Arc::new(other.into_middleware()),
         }
     }
 }
 
-pub trait ProtocolHandable: Sized + Middleware<ChildContext<ClientEvent, Event>> {
-    fn proto<M: IntoProtocol>(self, handler: M) -> ProtocolChainHandler<Self, M::Protocol> {
+pub trait ProtocolHandable: Sized + Middleware + Send + Sync {
+    fn then_protocol<M: IntoProtocol>(self, handler: M) -> ProtocolChainHandler<Self, M::Protocol>
+    where
+        <M as IntoProtocol>::Protocol: Send + Sync,
+    {
         ProtocolChainHandler {
             s: Arc::new(self),
             f: Arc::new(handler.into_protocol()),
         }
     }
-    //fn to_handler(self) -> ProtocolChainHandler<Self, NotFoundHandler>;
 }
 
-impl<T> ProtocolHandable for T where T: Middleware<ChildContext<ClientEvent, Event>> {}
+impl<T> ProtocolHandable for T where
+    T: Middleware<Input = ChildContext<ClientEvent, Event>, Output = (), Error = JuntaError>
+        + Sync
+        + Send
+{
+}
 
-pub struct ProtocolMiddlewareChainFuture<F: Future> {
-    s: Option<Box<Future<Item = (), Error = JuntaError> + Send>>,
+pub struct ProtocolMiddlewareChainFuture<F: Future, O, E> {
+    s: Option<Box<Future<Item = O, Error = E> + Send>>,
     f: F,
-    sx: Option<Sender<JuntaResult<()>>>,
+    sx: Option<Sender<Result<O, E>>>,
 }
 
-impl<F: Future> ProtocolMiddlewareChainFuture<F> {
+impl<F: Future, O, E> ProtocolMiddlewareChainFuture<F, O, E> {
     pub fn new(
-        s: Box<Future<Item = (), Error = JuntaError> + Send>,
+        s: Box<Future<Item = O, Error = E> + Send>,
         f: F,
-        sx: Sender<JuntaResult<()>>,
-    ) -> ProtocolMiddlewareChainFuture<F> {
+        sx: Sender<Result<O, E>>,
+    ) -> ProtocolMiddlewareChainFuture<F, O, E> {
         ProtocolMiddlewareChainFuture {
             s: Some(s),
             f,
@@ -82,12 +102,12 @@ impl<F: Future> ProtocolMiddlewareChainFuture<F> {
     }
 }
 
-impl<F: Future> Future for ProtocolMiddlewareChainFuture<F>
+impl<F: Future, O, E> Future for ProtocolMiddlewareChainFuture<F, O, E>
 where
-    F: Future<Item = (), Error = JuntaError>,
+    F: Future<Item = O, Error = E>,
 {
-    type Item = ();
-    type Error = JuntaError;
+    type Item = O;
+    type Error = E;
 
     fn poll(self: &mut Self) -> Poll<Self::Item, Self::Error> {
         match &mut self.s {
@@ -111,7 +131,7 @@ where
 
 pub struct ProtocolChainHandler<S, F>
 where
-    S: Middleware<ChildContext<ClientEvent, Event>> + Sync + Send,
+    S: Middleware + Sync + Send,
     F: Protocol + Sync,
 {
     s: Arc<S>,
@@ -120,24 +140,30 @@ where
 
 impl<S, F> Protocol for ProtocolChainHandler<S, F>
 where
-    S: Middleware<ChildContext<ClientEvent, Event>> + Sync + Send + 'static,
+    S: Middleware<Input = ChildContext<ClientEvent, Event>, Output = (), Error = JuntaError>
+        + Sync
+        + Send
+        + 'static,
+
     F: Protocol + Sync + Send + 'static,
+    <S as Middleware>::Future: Send + 'static,
     <F as Protocol>::Future: Send + 'static,
 {
-    type Future = ProtocolMiddlewareChainFuture<S::Future>;
+    type Future = ProtocolMiddlewareChainFuture<S::Future, (), JuntaError>;
+
     fn execute(&self, req: ChildContext<ClientEvent, Event>) -> Self::Future {
-        let (n, sx, rx) = Next::<ChildContext<ClientEvent, Event>>::new();
+        let (n, sx, rx) = Next::new();
         let f = self.f.clone();
 
         let fut = rx
-            .map_err(|_| JuntaError::new(JuntaErrorKind::Unknown))
+            .map_err(|_| JuntaError::from(ServiceError::ReceiverClosed))
             .and_then(move |req| f.execute(req));
 
         let fut2 = self.s.call(req, n);
         ProtocolMiddlewareChainFuture::new(Box::new(fut), fut2, sx)
     }
 
-    fn check(&self, req: &BorrowedContext<ClientEvent, Event>) -> bool {
-        self.f.check(req)
+    fn check(&self, ctx: &BorrowedContext<ClientEvent, Event>) -> bool {
+        self.f.check(ctx)
     }
 }

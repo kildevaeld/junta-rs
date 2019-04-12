@@ -21,11 +21,9 @@ impl ClientExt for Client {
         &self,
         data: &S,
     ) -> Box<Future<Item = (), Error = JuntaError> + Send + 'static> {
-        let fut = match serde_json::to_string(data)
-            .map_err(|e| JuntaError::new(JuntaErrorKind::Unknown))
-        {
+        let fut = match serde_json::to_string(data) {
             Ok(s) => OneOfTwo::Future1(self.send(MessageContent::Text(s))),
-            Err(e) => OneOfTwo::Future2(futures::future::err(e)),
+            Err(e) => OneOfTwo::Future2(futures::future::err(e.into())),
         };
 
         Box::new(OneOfTwoFuture::new(fut))
@@ -34,11 +32,10 @@ impl ClientExt for Client {
         &self,
         data: &S,
     ) -> Box<Future<Item = (), Error = JuntaError> + Send + 'static> {
-        let fut =
-            match serde_cbor::to_vec(data).map_err(|e| JuntaError::new(JuntaErrorKind::Unknown)) {
-                Ok(s) => OneOfTwo::Future1(self.send(MessageContent::Binary(s))),
-                Err(e) => OneOfTwo::Future2(futures::future::err(e)),
-            };
+        let fut = match serde_cbor::to_vec(data) {
+            Ok(s) => OneOfTwo::Future1(self.send(MessageContent::Binary(s))),
+            Err(e) => OneOfTwo::Future2(futures::future::err(e.into())),
+        };
 
         Box::new(OneOfTwoFuture::new(fut))
     }

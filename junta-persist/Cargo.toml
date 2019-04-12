@@ -6,7 +6,8 @@ edition = "2018"
 
 [dependencies]
 junta = { path = "../junta" }
-junta-middleware = { path = "../junta-middleware" }
+junta-service = { path = "../junta-service" }
+#junta-middleware = { path = "../junta-middleware" }
 
 
 [dev-dependencies]

@@ -4,6 +4,7 @@ use super::protocol::{Protocol, ProtocolService};
 use erased_serde::Serialize as ESerialize;
 use futures::prelude::*;
 use junta::prelude::*;
+use junta_service::prelude::*;
 use serde_cbor::Value;
 
 pub trait RequestProtocolService {
@@ -92,7 +93,7 @@ where
                 )
             }
             _ => OneOfTwo::Future2(futures::future::err(
-                JuntaErrorKind::Error("invalid request".to_string()).into(),
+                JuntaErrorKind::Unknown("invalid request".to_string()).into(),
             )),
         };
         Box::new(OneOfTwoFuture::new(out))
@@ -106,14 +107,17 @@ where
     }
 }
 
-impl<S: Send + Sync + 'static> IntoHandler for RequestProtocol<S>
+impl<S: Send + Sync + 'static> IntoService for RequestProtocol<S>
 where
     S: RequestProtocolService,
     <S as RequestProtocolService>::Future: 'static + Send,
 {
-    type Future = <ProtocolService<Self> as Handler>::Future; //Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
-    type Handler = ProtocolService<Self>;
-    fn into_handler(self) -> Self::Handler {
+    type Input = Context<ClientEvent>;
+    type Output = ();
+    type Error = JuntaError;
+    type Future = <ProtocolService<Self> as Service>::Future; //Box<Future<Item = (), Error = JuntaError> + Send + 'static>;
+    type Service = ProtocolService<Self>;
+    fn into_service(self) -> Self::Service {
         ProtocolService::new(self)
     }
 }

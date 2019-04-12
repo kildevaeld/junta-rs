@@ -4,6 +4,7 @@ use futures::future;
 use futures::prelude::*;
 use junta::prelude::*;
 use junta_persist::State;
+use junta_service::error::ServiceError;
 use plugins::*;
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -38,13 +39,13 @@ impl<I: 'static> ContextExt for Context<I> {
 
         let fut = self
             .send(&event)
-            .map_err(|e| JuntaError::new(JuntaErrorKind::Unknown))
+            //.map_err(|e| JuntaError::new(JuntaErrorKind::Unknown))
             .and_then(|_| {
-                rx.map_err(|e| JuntaError::new(JuntaErrorKind::Unknown))
+                rx.map_err(|_| JuntaError::from(ServiceError::ReceiverClosed))
                     .and_then(|resp| match resp {
                         Ok(m) => match serde_cbor::from_value(m) {
                             Ok(m) => future::ok(m),
-                            Err(e) => future::err(JuntaErrorKind::Error(e.to_string()).into()),
+                            Err(e) => future::err(JuntaError::from(e)),
                         },
                         Err(e) => future::err(e),
                     })

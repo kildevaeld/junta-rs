@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 junta = { path = "../junta", features = ["encoding"] }
 junta-persist = { path = "../junta-persist" }
-junta-middleware = { path = "../junta-middleware" }
+junta-service = { path = "../junta-service" }
 
 futures = "^0.1"
 serde = "^1.0"
