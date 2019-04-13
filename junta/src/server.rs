@@ -3,10 +3,12 @@ use super::context::Context;
 use super::error::{JuntaError, JuntaErrorKind, JuntaResult};
 use super::utils::{OneOfFour, OneOfFourFuture, OneOfTwo, OneOfTwoFuture};
 use futures::prelude::*;
+use futures::sync::oneshot::channel;
 use junta_service::prelude::*;
 use slog::{Discard, Logger};
 use std::collections::HashMap;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::sync::Mutex;
 use std::sync::{Arc, RwLock};
 use tokio::reactor::Handle;
 use tokio::runtime::TaskExecutor;
@@ -226,6 +228,7 @@ impl ServerHandler {
 
         let (sx, rx) = futures::sync::mpsc::channel(20);
         let (sx1, rx1) = futures::sync::mpsc::channel(20);
+        let (sx2, rx2) = futures::sync::oneshot::channel();
 
         let client = Arc::new(Client {
             id: id.clone(),
@@ -237,6 +240,7 @@ impl ServerHandler {
             address: addr,
             counter: counter,
             logger: logger.clone(),
+            close: Mutex::new(Some(sx2)),
         });
 
         let (cloned_client, cloned_list, cloned_handler) =
@@ -302,26 +306,42 @@ impl ServerHandler {
                             }
                         };
 
-                        exec.spawn(OneOfFourFuture::new(fut).map_err(|_: JuntaError| ()));
+                        exec.spawn(
+                            OneOfFourFuture::new(fut)
+                                // .or_else(|e| {
+                                //     println!("TOP-error {}", e);
+                                //     Ok(())
+                                // })
+                                .map_err(|e: JuntaError| {
+                                    println!("error {}", e);
+                                    ()
+                                }),
+                        );
                         futures::future::ok(())
+                        // OneOfFourFuture::new(fut).map_err(|e: JuntaError| {
+                        //     //println!("error {}", e);
+                        //     e
+                        // })
                     })
             });
 
-        let fut = ClientFuture::new(sink, stream, sx, rx1);
+        let clogger = cloned_client.logger().clone();
+        let fut = ClientFuture::new(sink, stream, sx, rx1, rx2);
+        let client = cloned_client.clone();
         executor.spawn(
             v.join(fut)
                 .and_then(move |_| {
                     let logger = cloned_client.logger().clone();
                     let elogger = logger.clone();
                     cloned_list.write().unwrap().remove(cloned_client.id());
-
+                    let client = cloned_client.clone();
                     cloned_handler
                         .call(Context::<ClientEvent>::new(
                             cloned_client,
                             ClientEvent::Close(None),
                         ))
                         .map(move |_| {
-                            info!(logger, "client closed");
+                            info!(client.logger(), "client closed");
                             ()
                         })
                         .map_err(move |e| {
@@ -329,8 +349,8 @@ impl ServerHandler {
                             e
                         })
                 })
-                .map_err(|e| {
-                    println!("client finished with error {}", e);
+                .map_err(move |e| {
+                    error!(client.logger(), "client finished with error {}", e);
                     ()
                 }),
         );

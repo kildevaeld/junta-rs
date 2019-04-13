@@ -5,11 +5,16 @@ use futures::prelude::*;
 use futures::sink::Sink;
 use futures::stream::{SplitSink, SplitStream};
 use futures::sync::mpsc::{Receiver, Sender};
+use futures::sync::oneshot::{Receiver as OneReceiver, Sender as OneSender};
 use junta_service::error::ServiceError;
+use junta_service::prelude::*;
+use junta_service::utils::*;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::codec::Framed;
 use tokio::net::TcpStream;
+use tokio::prelude::*;
 use uuid::Uuid;
 use websocket::r#async::MessageCodec;
 use websocket::{CloseData, OwnedMessage};
@@ -40,6 +45,29 @@ pub enum ClientEvent {
     Close(Option<CloseData>),
 }
 
+impl ClientEvent {
+    pub fn is_connect(&self) -> bool {
+        match self {
+            ClientEvent::Connect => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_message(&self) -> bool {
+        match self {
+            ClientEvent::Message(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_close(&self) -> bool {
+        match self {
+            ClientEvent::Close(_) => true,
+            _ => false,
+        }
+    }
+}
+
 // impl ClientEvent {
 //     fn from(msg: OwnedMessage) -> ClientEvent {
 //         match msg {
@@ -61,24 +89,62 @@ pub struct Client {
     pub(crate) address: SocketAddr,
     pub(crate) counter: Arc<atomic_counter::RelaxedCounter>,
     pub(crate) logger: slog::Logger,
+    pub(crate) close: Mutex<Option<OneSender<()>>>,
 }
 
 impl Client {
     pub fn send(&self, msg: MessageContent) -> impl Future<Item = (), Error = JuntaError> {
-        debug!(self.logger, "sending message");
-        self.sender
-            .clone()
-            .send(msg.to_message())
-            .map(|_| ())
-            .map_err(|_| JuntaErrorKind::Send.into())
+        debug!(self.logger, "sending message {:?}", msg);
+
+        // self.sender
+        //     .clone()
+        //     .send(msg.to_message())
+        //     .map(|_| ())
+        //     .map_err(|_| JuntaErrorKind::Send.into())
+
+        match self.sender.clone().start_send(msg.to_message()) {
+            Ok(_) => future::ok(()),
+            Err(e) => future::err(JuntaErrorKind::Error(Box::new(e)).into()),
+        }
     }
 
     pub fn close(&self) -> impl Future<Item = (), Error = JuntaError> {
-        self.sender
-            .clone()
-            .send(OwnedMessage::Close(None))
-            .map(|_| ())
-            .map_err(|_| JuntaErrorKind::Send.into())
+        let fut = if self.close.lock().unwrap().is_none() {
+            futures::future::ok(())
+        } else {
+            let sender = self.close.lock().unwrap().take().unwrap();
+            if self.sender.is_closed() {
+                futures::future::ok(())
+            } else {
+                match self
+                    .sender
+                    .clone()
+                    .start_send(OwnedMessage::Close(Some(CloseData::new(
+                        1000,
+                        "NORMAL".to_string(),
+                    )))) {
+                    Ok(_) => future::ok(()),
+                    Err(e) => future::err(JuntaErrorKind::Error(Box::new(e)).into()),
+                }
+            }
+
+            // self.sender
+            //     .clone()
+            //     .send(OwnedMessage::Close(Some(CloseData::new(
+            //         1000,
+            //         "NORMAL".to_string(),
+            //     ))))
+            //     .map(|_| {
+            //         sender.send(()).unwrap();
+            //         ()
+            //     })
+            //     .map_err(|_| JuntaErrorKind::Send.into()),
+
+            // sender.send(());
+            // OneOfTwo::Future2(futures::future::ok(()))
+        };
+
+        fut
     }
 
     pub fn id(&self) -> &Uuid {
@@ -130,6 +196,8 @@ pub struct ClientFuture {
     stream: SplitStream<Framed<TcpStream, MessageCodec<OwnedMessage>>>,
     sender: Sender<OwnedMessage>,
     recv: Receiver<OwnedMessage>,
+    close: OneReceiver<()>,
+    closed: bool,
 }
 
 impl ClientFuture {
@@ -139,6 +207,7 @@ impl ClientFuture {
         stream: SplitStream<Framed<TcpStream, MessageCodec<OwnedMessage>>>,
         sender: Sender<OwnedMessage>,
         recv: Receiver<OwnedMessage>,
+        close: OneReceiver<()>,
     ) -> ClientFuture {
         ClientFuture {
             //id,
@@ -146,6 +215,8 @@ impl ClientFuture {
             stream,
             sender,
             recv,
+            close,
+            closed: false,
         }
     }
 }
@@ -154,6 +225,9 @@ impl Future for ClientFuture {
     type Item = ();
     type Error = JuntaError;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        if self.closed {
+            return Ok(Async::Ready(()));
+        }
         match poll_stream!(self.recv, self.sink) {
             Some(_) => {
                 poll_stream!(self.recv, self.sink);
@@ -170,26 +244,46 @@ impl Future for ClientFuture {
             None => (),
         };
 
-        // match self.sender.poll_complete() {
-        //     Ok(Async::NotReady) => (),
-        //     Ok(Async::Ready(_)) => {
-        //         self.sender.poll_complete();
-        //         // println!("sender poll ready");
-        //         //return Ok(Async::Ready(()));
-        //         ()
-        //     }
-        //     Err(_) => return Err(JuntaErrorKind::Unknown.into()),
-        // };
+        match self.sender.poll_complete() {
+            Ok(Async::NotReady) => (),
+            Ok(Async::Ready(_)) => {
+                self.sender.poll_complete();
+                // println!("sender poll ready");
+                //return Ok(Async::Ready(()));
+                ()
+            }
+            Err(e) => {
+                println!("sender poll error");
+                return Err(JuntaErrorKind::Error(Box::new(e)).into());
+            }
+        };
 
         match self.sink.poll_complete() {
             Ok(Async::NotReady) => (),
             Ok(Async::Ready(_)) => {
                 self.sink.poll_complete();
-                // println!("sink poll ready");
+
                 //return Ok(Async::Ready(()));
                 ()
             }
             Err(e) => return Err(JuntaErrorKind::Transport(e).into()),
+        };
+
+        match self.close.poll() {
+            Ok(Async::NotReady) => (),
+            Ok(Async::Ready(_)) => {
+                println!("closing the channel");
+                self.sink.close();
+                self.closed = true;
+            }
+            Err(e) => {
+                //self.sink.close();
+                //<self.sink.close();
+
+                println!("cerror polling close");
+                return Ok(Async::Ready(()));
+                //return Err(JuntaErrorKind::Error(Box::new(e)).into());
+            }
         };
 
         Ok(Async::NotReady)

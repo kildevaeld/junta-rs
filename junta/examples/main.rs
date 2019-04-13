@@ -34,25 +34,32 @@ fn main() {
 
     let fut = Server::bind("127.0.0.1:2794")
         .unwrap()
-        //.logger(logger)
+        .logger(logger)
         .serve(
             runtime.executor(),
-            check_fn(
-                |ctx: &Context<ClientEvent>| {
-                    let text = match ctx.message() {
-                        ClientEvent::Message(MessageContent::Text(text)) => text,
-                        _ => return false,
-                    };
-                    return text == "greeting";
-                },
-                service_fn(|ctx: Context<ClientEvent>| {
-                    ctx.client().send(MessageContent::Text("Hello".to_string()))
-                }),
-            )
-            .or(service_fn(|ctx: Context<ClientEvent>| {
-                ctx.client()
-                    .send(MessageContent::Text("Hello 2".to_string()))
-            })),
+            // check_fn(
+            //     |ctx: &Context<ClientEvent>| {
+            //         let text = match ctx.message() {
+            //             ClientEvent::Message(MessageContent::Text(text)) => text,
+            //             _ => return false,
+            //         };
+            //         return text == "greeting";
+            //     },
+            //     service_fn(|ctx: Context<ClientEvent>| {
+            //         ctx.client().send(MessageContent::Text("Hello".to_string()))
+            //     }),
+            // )
+            // .or(service_fn(|ctx: Context<ClientEvent>| {
+            //     ctx.client()
+            //         .send(MessageContent::Text("Hello 2".to_string()))
+            // })),
+            service_fn(|ctx: Context<ClientEvent>| {
+                if ctx.message().is_message() {}
+                //ctx.client().close()
+                // ctx.client()
+                //     .send(MessageContent::Text("Hello 2".to_string()))
+                Ok(())
+            }),
         )
         .unwrap();
 

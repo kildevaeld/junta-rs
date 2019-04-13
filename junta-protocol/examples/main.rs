@@ -35,9 +35,9 @@ fn main() {
         let client = ctx.client().clone();
 
         tokio::spawn(
-            ctx.request("greeting", &())
+            ctx.request("greeting", &"Name")
                 .and_then(move |req: String| {
-                    println!("did receive {}", req);
+                    slog::debug!(ctx.client().logger(), "did receive {}", req);
                     ctx.client().broadcast(MessageContent::Text(format!(
                         "hello from again {}",
                         ctx.client().id()
@@ -56,7 +56,8 @@ fn main() {
     })
     .or(protocol_req_fn("greeting2", |value| {
         let m = format!("Hello, World 2 {:?}", value.message().clone());
-        Ok(m)
+        value.client().close().map(move |_| m)
+        // Ok(m)
     }));
     //.into_handler();
 
