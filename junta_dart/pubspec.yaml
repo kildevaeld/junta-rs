@@ -1,0 +1,5 @@
+name: junta
+publish_to: none
+
+dependencies:
+  cbor: ^2.0.2
