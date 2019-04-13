@@ -1,5 +1,8 @@
 name: junta
 publish_to: none
 
+environment:
+  sdk: '>=2.0.0 <3.0.0'
+
 dependencies:
   cbor: ^2.0.2
