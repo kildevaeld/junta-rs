@@ -5,6 +5,7 @@ use serde_cbor::Value;
 pub enum EventType {
     Pub(String, Value),
     Sub(String),
+    Unsub(String),
     Req(String, Value),
     Res(String, Value),
 }
