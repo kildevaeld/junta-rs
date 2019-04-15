@@ -1,10 +1,10 @@
 import '../service.dart';
-
 import './types.dart';
 import 'dart:async';
 import '../context.dart';
 import './events.dart';
 import './service.dart';
+import './errors.dart';
 
 class ResponseProtocol extends Protocol {
   final Map<int, Completer<dynamic>> _listeners;
@@ -15,8 +15,16 @@ class ResponseProtocol extends Protocol {
     if (input.message.type is ResEventType) {
       final event = input.message.type as ResEventType;
       try {
-        await this._listeners[input.message.id].complete(event.value);
-        this._listeners.remove(input.message.id);
+        final result = event.result;
+
+        if (result is ResEventOk) {
+          this._listeners[input.message.id].complete(result.value);
+        } else if (result is ResEventErr) {
+          this
+              ._listeners[input.message.id]
+              .completeError(JuntaRequestError.fromJson(result.error));
+        }
+        await this._listeners.remove(input.message.id);
       } catch (e) {
         this._listeners.remove(input.message.id);
         throw e;

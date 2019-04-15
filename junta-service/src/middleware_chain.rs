@@ -2,7 +2,7 @@ use super::error::ServiceError;
 use super::middleware::{IntoMiddleware, Middleware, Next};
 use super::service::*;
 use futures::prelude::*;
-use futures::sync::oneshot::{Receiver, Sender};
+use futures::sync::oneshot::Sender;
 use std::sync::Arc;
 
 #[derive(Clone)]

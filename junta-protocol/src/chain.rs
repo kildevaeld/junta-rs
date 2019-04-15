@@ -1,8 +1,8 @@
 use super::event::*;
 use super::protocol::{Protocol, ProtocolService};
+use future_ext::*;
 use junta::prelude::*;
 use junta_service::prelude::*;
-
 pub struct ProtocolChain<S1, S2> {
     s1: S1,
     s2: S2,
@@ -30,11 +30,11 @@ where
     fn execute(&self, ctx: ChildContext<ClientEvent, Event>) -> Self::Future {
         let borrow = BorrowedContext::new(ctx.parent(), ctx.message());
         let fut = if self.s1.check(&borrow) {
-            OneOfTree::Future1(self.s1.execute(ctx))
+            OneOfTree::First(self.s1.execute(ctx))
         } else if self.s2.check(&borrow) {
-            OneOfTree::Future2(self.s2.execute(ctx))
+            OneOfTree::Second(self.s2.execute(ctx))
         } else {
-            OneOfTree::Future3(futures::future::err(
+            OneOfTree::Third(futures::future::err(
                 JuntaErrorKind::Unknown("invalid request".to_string()).into(),
             ))
         };

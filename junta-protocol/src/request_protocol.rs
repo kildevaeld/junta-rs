@@ -2,13 +2,17 @@
 use super::event::*;
 use super::protocol::{Protocol, ProtocolService};
 use erased_serde::Serialize as ESerialize;
+use future_ext::*;
 use futures::prelude::*;
 use junta::prelude::*;
 use junta_service::prelude::*;
 use serde_cbor::Value;
+use std::error::Error;
 
 pub trait RequestProtocolService {
-    type Future: Future<Item = Box<dyn ESerialize>, Error = JuntaError>;
+    type Item: serde::Serialize;
+    type Error: Error;
+    type Future: Future<Item = Self::Item, Error = Self::Error>;
     fn execute(&self, ctx: Context<Value>) -> Self::Future;
 }
 
@@ -22,30 +26,29 @@ impl<F> RequestProtocolServiceFn<F> {
     }
 }
 
-impl<F, U, I> RequestProtocolService for RequestProtocolServiceFn<F>
+impl<F, U, I: serde::Serialize, E: Error> RequestProtocolService for RequestProtocolServiceFn<F>
 where
     F: Fn(Context<Value>) -> U,
-    U: IntoFuture<Item = I, Error = JuntaError>,
+    U: IntoFuture<Item = I, Error = E>,
     <U as IntoFuture>::Future: 'static + Send,
     I: serde::Serialize + 'static,
 {
-    type Future = Box<Future<Item = Box<ESerialize>, Error = JuntaError> + Send + 'static>;
+    type Item = I;
+    type Error = E;
+    type Future = U::Future;
     fn execute(&self, ctx: Context<Value>) -> Self::Future {
         let out = (self.inner)(ctx);
-        Box::new(
-            out.into_future()
-                .map(|o| Box::new(o) as Box<dyn ESerialize>),
-        )
+        out.into_future()
     }
 }
 
-pub fn protocol_req_fn<S: AsRef<str>, F: Send + Sync, U, I: serde::Serialize + 'static>(
+pub fn protocol_req_fn<S: AsRef<str>, F: Send + Sync, U, I: serde::Serialize + 'static, E>(
     name: S,
     func: F,
 ) -> RequestProtocol<RequestProtocolServiceFn<F>>
 where
     F: Fn(Context<Value>) -> U,
-    U: IntoFuture<Item = I, Error = JuntaError> + Send,
+    U: IntoFuture<Item = I, Error = E> + Send,
     <U as IntoFuture>::Future: Send + 'static,
 {
     RequestProtocol::new(name, RequestProtocolServiceFn { inner: func })
@@ -78,21 +81,38 @@ where
                 let name = name.to_string();
                 let binary = ctx.binary();
                 let client = ctx.client().clone();
-                OneOfTwo::Future1(
+                OneOfTwo::First(
                     self.service
                         .execute(ctx.into_parent().with_message(req).0)
-                        .and_then(move |ret| {
-                            let value = serde_cbor::to_value(ret).unwrap();
-                            if binary {
-                                client.send_binary(&Event::new(id, EventType::Res(name, value)))
+                        .then(move |ret| {
+                            //let value = serde_cbor::to_value(ret).unwrap();
+                            let msg = match ret {
+                                Ok(value) => {
+                                    let value = serde_cbor::to_value(value).unwrap();
+                                    EventType::Res(name, ResResult::Ok(value))
+                                },
+                                Err(e) => EventType::Res(name, ResResult::Err(ResError::new(e.to_string())))
+                            };
+                            let event = Event::new(id, msg);
+                                if binary {
+                                client.send_binary(&event)
                             } else {
-                                client.send_text(&Event::new(id, EventType::Res(name, value)))
+                                client.send_text(&event)
                             }
+                            
                         })
-                        .map(|_| ()),
+                        // .and_then(move |ret| {
+                        //     let value = serde_cbor::to_value(ret).unwrap();
+                            // if binary {
+                            //     client.send_binary(&Event::new(id, EventType::Res(name, value)))
+                            // } else {
+                            //     client.send_text(&Event::new(id, EventType::Res(name, value)))
+                            // }
+                        // })
+                        // .map(|_| ()),
                 )
             }
-            _ => OneOfTwo::Future2(futures::future::err(
+            _ => OneOfTwo::Second(futures::future::err(
                 JuntaErrorKind::Unknown("invalid request".to_string()).into(),
             )),
         };

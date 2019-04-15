@@ -50,14 +50,19 @@ fn main() {
                 }),
         );
 
-        Ok(m)
+        Ok::<_, JuntaError>(m)
 
         //Ok(m)
     })
     .or(protocol_req_fn("greeting2", |value| {
         let m = format!("Hello, World 2 {:?}", value.message().clone());
-        value.client().close().map(move |_| m)
-        // Ok(m)
+        //value.client().close().map(move |_| m)
+        Ok::<_, JuntaError>(m)
+    }))
+    .or(protocol_req_fn("error", |value| {
+        Err::<(), _>(JuntaError::from(JuntaErrorKind::Unknown(
+            "Error from result".to_string(),
+        )))
     }));
     //.into_handler();
 

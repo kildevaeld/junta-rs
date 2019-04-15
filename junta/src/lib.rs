@@ -8,7 +8,7 @@ mod context;
 mod error;
 pub mod plugins;
 mod server;
-mod utils;
+//mod utils;
 
 pub mod prelude {
     pub use super::client::*;
@@ -18,6 +18,6 @@ pub mod prelude {
     pub use super::error::*;
     pub use super::plugins;
     pub use super::server::*;
-    pub use super::utils::*;
+    //pub use super::utils::*;
     pub use typemap::Key;
 }

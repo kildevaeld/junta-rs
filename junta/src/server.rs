@@ -1,7 +1,7 @@
 use super::client::{Client, ClientEvent, ClientFuture};
 use super::context::Context;
 use super::error::{JuntaError, JuntaErrorKind, JuntaResult};
-use super::utils::{OneOfFour, OneOfFourFuture, OneOfTwo, OneOfTwoFuture};
+use future_ext::{OneOfFour, OneOfFourFuture, OneOfTwo, OneOfTwoFuture};
 use futures::prelude::*;
 use futures::sync::oneshot::channel;
 use junta_service::prelude::*;
@@ -168,7 +168,7 @@ impl ServerHandler {
             .for_each(move |(upgrade, addr)| {
                 let fut = if !upgrade.protocols().iter().any(|s| s == "rust-websocket") {
                     executor.spawn(upgrade.reject().map(|_| ()).map_err(|_| ()));
-                    OneOfTwo::Future1(futures::future::ok(()))
+                    OneOfTwo::First(futures::future::ok(()))
                 } else {
                     let t = executor.clone();
 
@@ -177,7 +177,7 @@ impl ServerHandler {
                     let handler = handler.clone();
                     let counter = counter.clone();
 
-                    OneOfTwo::Future2(
+                    OneOfTwo::Second(
                         upgrade
                             .use_protocol("rust-websocket")
                             .accept()
@@ -277,11 +277,11 @@ impl ServerHandler {
                                         client.close()
                                     });
 
-                                OneOfFour::Future1(out)
+                                OneOfFour::First(out)
                             }
                             OwnedMessage::Ping(ping) => {
                                 debug!(logger, "client sent ping");
-                                OneOfFour::Future2(
+                                OneOfFour::Second(
                                     cl.sender
                                         .clone()
                                         .send(OwnedMessage::Pong(ping))
@@ -289,17 +289,17 @@ impl ServerHandler {
                                         .map_err(|_| JuntaErrorKind::Send.into()),
                                 )
                             }
-                            OwnedMessage::Pong(_) => OneOfFour::Future3(futures::future::ok(())),
+                            OwnedMessage::Pong(_) => OneOfFour::Third(futures::future::ok(())),
                             OwnedMessage::Binary(data) => {
                                 debug!(logger, "client sent binary message");
-                                OneOfFour::Future4(handler.call(Context::<ClientEvent>::new(
+                                OneOfFour::Fourth(handler.call(Context::<ClientEvent>::new(
                                     cl,
                                     ClientEvent::Message(MessageContent::Binary(data)),
                                 )))
                             }
                             OwnedMessage::Text(data) => {
                                 debug!(logger, "client sent text message");
-                                OneOfFour::Future4(handler.call(Context::<ClientEvent>::new(
+                                OneOfFour::Fourth(handler.call(Context::<ClientEvent>::new(
                                     cl,
                                     ClientEvent::Message(MessageContent::Text(data)),
                                 )))

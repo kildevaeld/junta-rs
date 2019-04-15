@@ -37,19 +37,21 @@ impl<I: 'static> ContextExt for Context<I> {
 
         let event = Event::new(id, EventType::Req(name, value));
 
-        let fut = self
-            .send(&event)
-            //.map_err(|e| JuntaError::new(JuntaErrorKind::Unknown))
-            .and_then(|_| {
-                rx.map_err(|_| JuntaError::from(ServiceError::ReceiverClosed))
-                    .and_then(|resp| match resp {
-                        Ok(m) => match serde_cbor::from_value(m) {
+        let fut = self.send(&event).and_then(|_| {
+            rx.map_err(|_| JuntaError::from(ServiceError::ReceiverClosed))
+                .and_then(|resp| match resp {
+                    Ok(m) => match m {
+                        ResResult::Ok(m) => match serde_cbor::from_value(m) {
                             Ok(m) => future::ok(m),
                             Err(e) => future::err(JuntaError::from(e)),
                         },
-                        Err(e) => future::err(e),
-                    })
-            });
+                        ResResult::Err(e) => {
+                            future::err(JuntaError::new(JuntaErrorKind::Error(Box::new(e))))
+                        }
+                    },
+                    Err(e) => future::err(e),
+                })
+        });
 
         Box::new(fut)
     }

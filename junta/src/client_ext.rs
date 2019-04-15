@@ -1,7 +1,7 @@
 use super::client::Client;
 use super::error::*;
 use super::server::MessageContent;
-use super::utils::*;
+use future_ext::*;
 use futures::prelude::*;
 use serde::Serialize;
 
@@ -22,8 +22,8 @@ impl ClientExt for Client {
         data: &S,
     ) -> Box<Future<Item = (), Error = JuntaError> + Send + 'static> {
         let fut = match serde_json::to_string(data) {
-            Ok(s) => OneOfTwo::Future1(self.send(MessageContent::Text(s))),
-            Err(e) => OneOfTwo::Future2(futures::future::err(e.into())),
+            Ok(s) => OneOfTwo::First(self.send(MessageContent::Text(s))),
+            Err(e) => OneOfTwo::Second(futures::future::err(e.into())),
         };
 
         Box::new(OneOfTwoFuture::new(fut))
@@ -33,8 +33,8 @@ impl ClientExt for Client {
         data: &S,
     ) -> Box<Future<Item = (), Error = JuntaError> + Send + 'static> {
         let fut = match serde_cbor::to_vec(data) {
-            Ok(s) => OneOfTwo::Future1(self.send(MessageContent::Binary(s))),
-            Err(e) => OneOfTwo::Future2(futures::future::err(e.into())),
+            Ok(s) => OneOfTwo::First(self.send(MessageContent::Binary(s))),
+            Err(e) => OneOfTwo::Second(futures::future::err(e.into())),
         };
 
         Box::new(OneOfTwoFuture::new(fut))

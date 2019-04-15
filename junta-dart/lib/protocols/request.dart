@@ -22,7 +22,12 @@ class RequestProtocol extends Protocol {
 
     final name = (type as ReqEventType).name;
     return handler(input.copyWith((type as ReqEventType).value)).then((value) {
-      final event = input.message.copyWith(type: ResEventType(name, value));
+      final event =
+          input.message.copyWith(type: ResEventType(name, ResEventOk(value)));
+      input.client.send(jsonEncode(event));
+    }, onError: (err) {
+      final event = input.message
+          .copyWith(type: ResEventType(name, ResEventErr(err.toString())));
       input.client.send(jsonEncode(event));
     });
   }

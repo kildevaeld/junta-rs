@@ -5,21 +5,27 @@ use super::middleware::{ProtocolChainHandler, ProtocolHandable};
 use super::response_protocol::ResponseProtocol;
 use futures::prelude::*;
 // use futures::sync::mpsc::{channel as multi_channel, Receiver, Sender};
+use future_ext::*;
 use futures::sync::oneshot::{channel, Receiver as OneReceiver, Sender as OneSender};
 use junta::prelude::*;
 use junta_persist::{PersistMiddleware, State};
 use junta_service::prelude::*;
 use serde_cbor::Value;
-// use std::sync::{Arc, RwLock};
 
 pub struct Listener {
     pub(crate) id: usize,
     pub(crate) name: String,
-    pub(crate) sender: OneSender<JuntaResult<Value>>,
+    pub(crate) sender: OneSender<JuntaResult<ResResult<Value, ResError>>>,
 }
 
 impl Listener {
-    pub fn new(id: usize, name: String) -> (Listener, OneReceiver<JuntaResult<Value>>) {
+    pub fn new(
+        id: usize,
+        name: String,
+    ) -> (
+        Listener,
+        OneReceiver<JuntaResult<ResResult<Value, ResError>>>,
+    ) {
         let (sx, rx) = channel();
         (
             Listener {
@@ -140,9 +146,9 @@ where
         let fut = match ctx.message() {
             ClientEvent::Message(_) => {
                 let event = ctx.decode::<Event>().unwrap();
-                OneOfTwo::Future1(self.service.execute(ChildContext::new(ctx, event)))
+                OneOfTwo::First(self.service.execute(ChildContext::new(ctx, event)))
             }
-            _ => OneOfTwo::Future2(futures::future::ok(())),
+            _ => OneOfTwo::Second(futures::future::ok(())),
         };
         OneOfTwoFuture::new(fut)
     }

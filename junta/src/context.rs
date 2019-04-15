@@ -5,7 +5,7 @@ use super::error::*;
 use super::plugins::{Extensible, Pluggable};
 use super::server::MessageContent;
 #[cfg(feature = "encoding")]
-use super::utils::*;
+use future_ext::*;
 #[cfg(feature = "encoding")]
 use futures::prelude::*;
 use std::sync::Arc;
@@ -72,8 +72,8 @@ impl<I> Context<I> {
         };
 
         let fut = match ret {
-            Ok(msg) => OneOfTwo::Future1(self.client.send(msg)),
-            Err(e) => OneOfTwo::Future2(futures::future::err(e)),
+            Ok(msg) => OneOfTwo::First(self.client.send(msg)),
+            Err(e) => OneOfTwo::Second(futures::future::err(e)),
         };
 
         OneOfTwoFuture::new(fut)

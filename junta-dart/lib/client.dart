@@ -5,32 +5,39 @@ import './protocols/protocols.dart';
 import './context.dart';
 import './service.dart';
 
+enum LogLevel { Error, Warn, Info, Debug }
+
+abstract class Logger {
+  log(LogLevel level, String msg);
+}
+
 class Client extends BaseClient {
   final WebSocket _socket;
-  final Service<Context<ClientEvent>, void> _service;
-
+  final Service<Context<ClientEvent>, void> service;
+  final Logger logger;
   int _seq = 0;
   final Map<int, Completer> _listeners;
   StreamSubscription<dynamic> _subscription;
 
-  Client._internal(this._socket, this._listeners, [this._service]);
+  Client._internal(this._socket, this._listeners, {this.service, this.logger});
 
   static Future<Client> connect(String url,
-      [IntoService<Context<ClientEvent>, void> intoService]) async {
+      {IntoService<Context<ClientEvent>, void> service, Logger logger}) async {
     final socket = await WebSocket.connect(url, protocols: ["rust-websocket"]);
 
     final listeners = Map<int, Completer<dynamic>>();
     var middle = ResponseProtocol(listeners).intoService();
-    Service<Context<ClientEvent>, void> service;
-    if (intoService != null) {
-      service = middle.or(intoService.intoService());
+    Service<Context<ClientEvent>, void> resolvedService;
+    if (service != null) {
+      resolvedService = middle.or(service.intoService());
     } else {
-      service = middle;
+      resolvedService = middle;
     }
 
-    final client = Client._internal(socket, listeners, service);
+    final client = Client._internal(socket, listeners,
+        service: resolvedService, logger: logger);
     final ctx = Context(client, ClientConnectEvent());
-    if ((await client._service.check(ctx))) await client._service?.call(ctx);
+    if ((await client.service.check(ctx))) await client.service?.call(ctx);
     client._listen();
     return client;
   }
@@ -66,26 +73,27 @@ class Client extends BaseClient {
   }
 
   _listen() {
-    _subscription = _socket.listen((data) async {
-      try {
-        if (_service == null) {
-          return;
-        }
+    _subscription = _socket.listen(
+        (data) async {
+          try {
+            if (service == null) {
+              return;
+            }
 
-        final ctx = Context(this, ClientMessageEvent(data));
+            final ctx = Context(this, ClientMessageEvent(data));
 
-        if (!(await _service.check(ctx))) {
-          return;
-        }
+            if (!(await service.check(ctx))) {
+              return;
+            }
 
-        await _service.call(ctx);
-      } catch (e) {
-        print("could not parse event $e");
-      }
-    }, onDone: () {
-      print("dont");
-    }, onError: (e) {
-      print("ERROR $e");
-    });
+            await service.call(ctx);
+          } catch (e) {
+            logger?.log(LogLevel.Error, "could not parse event $e");
+          }
+        },
+        onDone: () {},
+        onError: (e) {
+          logger?.log(LogLevel.Error, "$e");
+        });
   }
 }

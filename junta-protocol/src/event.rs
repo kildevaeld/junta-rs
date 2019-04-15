@@ -1,5 +1,35 @@
 use junta::prelude::*;
 use serde_cbor::Value;
+use std::error::Error;
+use std::fmt;
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub enum ResResult<I, E> {
+    Err(E),
+    Ok(I),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct ResError {
+    code: i16,
+    message: String,
+}
+
+impl ResError {
+    pub fn new(msg: String) -> ResError {
+        ResError {
+            code: 0,
+            message: msg,
+        }
+    }
+}
+
+impl fmt::Display for ResError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl Error for ResError {}
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum EventType {
@@ -7,7 +37,7 @@ pub enum EventType {
     Sub(String),
     Unsub(String),
     Req(String, Value),
-    Res(String, Value),
+    Res(String, ResResult<Value, ResError>),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

@@ -5,7 +5,7 @@ authors = ["Rasmus Kildevaeld <rasmuskildevaeld@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-#junta = { path = "../junta" }
+future-ext = { git = "https://github.com/kildevaeld/future-ext" }
 futures = "^0.1"
 serde = "^1.0"
 serde_json = "^1.0"

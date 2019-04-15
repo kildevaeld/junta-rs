@@ -1,6 +1,6 @@
 use super::error::ServiceError;
 use super::service::Service;
-use super::utils::*;
+use future_ext::*;
 
 pub struct ServiceChain<S1, S2> {
     s1: S1,
@@ -38,11 +38,11 @@ where
 
     fn call(&self, ctx: Self::Input) -> Self::Future {
         let fut = if self.s1.should_call(&ctx) {
-            OneOfTree::Future1(self.s1.call(ctx))
+            OneOfTree::First(self.s1.call(ctx))
         } else if self.s2.should_call(&ctx) {
-            OneOfTree::Future2(self.s2.call(ctx))
+            OneOfTree::Second(self.s2.call(ctx))
         } else {
-            OneOfTree::Future3(futures::future::err(Self::Error::from(
+            OneOfTree::Third(futures::future::err(Self::Error::from(
                 ServiceError::InvalidRequest,
             )))
         };

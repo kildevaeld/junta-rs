@@ -1,3 +1,5 @@
+import 'errors.dart';
+
 abstract class EventType {
   dynamic toJson();
   const EventType();
@@ -28,14 +30,49 @@ class ReqEventType extends EventType {
   }
 }
 
+abstract class ResEventResult {
+  dynamic toJson();
+
+  static ResEventResult fromJson(dynamic json) {
+    if (!(json is Map<String, dynamic>)) {
+      throw JuntaError(
+          "ResEventResult.fromJson expected 'Map<String, dynamic>' got: '${json.runtimeType}'");
+    }
+    if (json["Ok"] != null) {
+      return ResEventOk(json["Ok"]);
+    } else if (json["Err"] != null) {
+      return ResEventErr(json["Err"]);
+    } else {
+      throw JuntaError("ResEventResult.fromJson got invalid result");
+    }
+  }
+}
+
+class ResEventOk implements ResEventResult {
+  final dynamic value;
+  const ResEventOk(this.value);
+
+  dynamic toJson() {
+    return {"Ok": value};
+  }
+}
+
+class ResEventErr implements ResEventResult {
+  final dynamic error;
+  const ResEventErr(this.error);
+  dynamic toJson() {
+    return {"Err": error};
+  }
+}
+
 class ResEventType extends EventType {
   final String name;
-  final dynamic value;
-  const ResEventType(this.name, this.value);
+  final ResEventResult result;
+  const ResEventType(this.name, this.result);
 
   @override
   toJson() => {
-        "Res": [name, value]
+        "Res": [name, result.toJson()]
       };
 
   static ResEventType fromJson(dynamic json) {
@@ -47,7 +84,7 @@ class ResEventType extends EventType {
     }
     var data = json["Res"];
 
-    return ResEventType(data[0] as String, data[1]);
+    return ResEventType(data[0] as String, ResEventResult.fromJson(data[1]));
   }
 }
 

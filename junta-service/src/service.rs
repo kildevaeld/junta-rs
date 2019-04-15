@@ -1,5 +1,5 @@
 use super::error::*;
-use super::utils::*;
+use future_ext::*;
 use futures::prelude::*;
 
 pub trait Service {
@@ -104,9 +104,9 @@ where
 
     fn call(&self, input: Self::Input) -> Self::Future {
         let fut = if (self.check)(&input) {
-            OneOfTwo::Future1(self.service.call(input))
+            OneOfTwo::First(self.service.call(input))
         } else {
-            OneOfTwo::Future2(futures::future::err(Self::Error::from(
+            OneOfTwo::Second(futures::future::err(Self::Error::from(
                 ServiceError::InvalidRequest,
             )))
         };

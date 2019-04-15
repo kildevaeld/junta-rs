@@ -8,7 +8,7 @@ edition = "2018"
 junta = { path = "../junta", features = ["encoding"] }
 junta-persist = { path = "../junta-persist" }
 junta-service = { path = "../junta-service" }
-
+future-ext = { git = "https://github.com/kildevaeld/future-ext" }
 futures = "^0.1"
 serde = "^1.0"
 serde_derive = "^1.0"
