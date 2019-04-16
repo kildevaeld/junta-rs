@@ -9,6 +9,34 @@ enum LogLevel { Error, Warn, Info, Debug }
 
 abstract class Logger {
   log(LogLevel level, String msg);
+  debug(String msg) {
+    log(LogLevel.Debug, msg);
+  }
+
+  error(String msg) {
+    log(LogLevel.Error, msg);
+  }
+}
+
+class StdioLogger extends Logger {
+  @override
+  log(LogLevel level, String msg) {
+    // TODO: implement log
+    print("[${this._levelToString(level)}]: $msg");
+  }
+
+  _levelToString(LogLevel level) {
+    switch (level) {
+      case LogLevel.Debug:
+        return "DEBUG";
+      case LogLevel.Error:
+        return "ERROR";
+      case LogLevel.Info:
+        return "INFO";
+      case LogLevel.Warn:
+        return "WARN";
+    }
+  }
 }
 
 class Client extends BaseClient {
@@ -80,12 +108,16 @@ class Client extends BaseClient {
               return;
             }
 
+            logger?.debug("client received message: $data");
+
             final ctx = Context(this, ClientMessageEvent(data));
 
             if (!(await service.check(ctx))) {
+              logger?.debug("no handler for message");
               return;
             }
 
+            logger?.debug("calling service");
             await service.call(ctx);
           } catch (e) {
             logger?.log(LogLevel.Error, "could not parse event $e");
@@ -93,7 +125,7 @@ class Client extends BaseClient {
         },
         onDone: () {},
         onError: (e) {
-          logger?.log(LogLevel.Error, "$e");
+          logger?.error("$e");
         });
   }
 }

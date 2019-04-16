@@ -93,8 +93,9 @@ where
                                 },
                                 Err(e) => EventType::Res(name, ResResult::Err(ResError::new(e.to_string())))
                             };
+
                             let event = Event::new(id, msg);
-                                if binary {
+                            if binary {
                                 client.send_binary(&event)
                             } else {
                                 client.send_text(&event)

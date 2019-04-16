@@ -253,7 +253,7 @@ impl Future for ClientFuture {
                 ()
             }
             Err(e) => {
-                println!("sender poll error");
+                //println!("sender poll error");
                 return Err(JuntaErrorKind::Error(Box::new(e)).into());
             }
         };
@@ -272,7 +272,7 @@ impl Future for ClientFuture {
         match self.close.poll() {
             Ok(Async::NotReady) => (),
             Ok(Async::Ready(_)) => {
-                println!("closing the channel");
+                //println!("closing the channel");
                 self.sink.close();
                 self.closed = true;
             }
@@ -280,7 +280,7 @@ impl Future for ClientFuture {
                 //self.sink.close();
                 //<self.sink.close();
 
-                println!("cerror polling close");
+                //println!("cerror polling close");
                 return Ok(Async::Ready(()));
                 //return Err(JuntaErrorKind::Error(Box::new(e)).into());
             }
