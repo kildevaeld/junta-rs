@@ -4,50 +4,18 @@ import 'dart:async';
 import './protocols/protocols.dart';
 import './context.dart';
 import './service.dart';
-
-enum LogLevel { Error, Warn, Info, Debug }
-
-abstract class Logger {
-  log(LogLevel level, String msg);
-  debug(String msg) {
-    log(LogLevel.Debug, msg);
-  }
-
-  error(String msg) {
-    log(LogLevel.Error, msg);
-  }
-}
-
-class StdioLogger extends Logger {
-  @override
-  log(LogLevel level, String msg) {
-    // TODO: implement log
-    print("[${this._levelToString(level)}]: $msg");
-  }
-
-  _levelToString(LogLevel level) {
-    switch (level) {
-      case LogLevel.Debug:
-        return "DEBUG";
-      case LogLevel.Error:
-        return "ERROR";
-      case LogLevel.Info:
-        return "INFO";
-      case LogLevel.Warn:
-        return "WARN";
-    }
-  }
-}
+import 'logger.dart';
 
 class Client extends BaseClient {
   final WebSocket _socket;
   final Service<Context<ClientEvent>, void> service;
-  final Logger logger;
+
   int _seq = 0;
   final Map<int, Completer> _listeners;
   StreamSubscription<dynamic> _subscription;
 
-  Client._internal(this._socket, this._listeners, {this.service, this.logger});
+  Client._internal(this._socket, this._listeners, {this.service, Logger logger})
+      : super(logger);
 
   static Future<Client> connect(String url,
       {IntoService<Context<ClientEvent>, void> service, Logger logger}) async {
@@ -78,6 +46,7 @@ class Client extends BaseClient {
     final event = Event(++this._seq, ReqEventType(method, args));
     final completer = Completer();
     _listeners[event.id] = completer;
+    logger?.debug("client sending message: $event");
     _socket.add(jsonEncode(event));
     return completer.future;
   }

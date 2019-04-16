@@ -1,4 +1,8 @@
+import 'logger.dart';
+
 abstract class BaseClient {
+  final Logger logger;
+  const BaseClient(this.logger);
   send(dynamic data);
 }
 
@@ -20,4 +24,6 @@ class Context<E> {
   Context<T> copyWith<T>(T input) {
     return Context(this.client, input);
   }
+
+  Logger get logger => client.logger;
 }

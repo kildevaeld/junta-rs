@@ -2,6 +2,7 @@ import '../context.dart';
 import '../service.dart';
 import './protocols.dart';
 import 'dart:convert';
+import 'errors.dart';
 
 class ProtocolService extends Service<Context<ClientEvent>, void> {
   final Protocol protocol;
@@ -16,7 +17,7 @@ class ProtocolService extends Service<Context<ClientEvent>, void> {
 
       return await protocol.call(input.copyWith(event));
     } else {
-      throw "something";
+      throw JuntaError("input.message is not a ClientMessageEvent");
     }
   }
 
@@ -30,9 +31,11 @@ class ProtocolService extends Service<Context<ClientEvent>, void> {
 
         return await protocol.check(input.copyWith(event));
       }
+      input.logger?.debug(
+          "input was '${input.message.runtimeType}'. Expected: ClientMessageEvent");
       return false;
     } catch (e) {
-      //print("invalid json $e");
+      input.logger?.debug("parse error $e");
       return false;
     }
   }
