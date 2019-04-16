@@ -1,6 +1,12 @@
 class JuntaError implements Exception {
   final String message;
   const JuntaError([this.message]);
+
+  @override
+  String toString() {
+    // TODO: implement toString
+    return message;
+  }
 }
 
 class JuntaRequestError extends JuntaError {
