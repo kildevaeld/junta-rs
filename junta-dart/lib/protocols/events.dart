@@ -43,7 +43,7 @@ abstract class ResEventResult {
     } else if (json["Err"] != null) {
       return ResEventErr(json["Err"]);
     } else {
-      throw JuntaError("ResEventResult.fromJson got invalid result");
+      throw JuntaError("ResEventResult.fromJson got invalid result: $json");
     }
   }
 }
