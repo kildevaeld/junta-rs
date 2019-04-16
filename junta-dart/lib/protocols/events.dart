@@ -38,9 +38,12 @@ abstract class ResEventResult {
       throw JuntaError(
           "ResEventResult.fromJson expected 'Map<String, dynamic>' got: '${json.runtimeType}'");
     }
-    if (json["Ok"] != null) {
+
+    final o = json as Map<String, dynamic>;
+
+    if (o.containsKey("Ok")) {
       return ResEventOk(json["Ok"]);
-    } else if (json["Err"] != null) {
+    } else if (o.containsKey("Err")) {
       return ResEventErr(json["Err"]);
     } else {
       throw JuntaError("ResEventResult.fromJson got invalid result: $json");
