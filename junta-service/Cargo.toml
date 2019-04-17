@@ -7,11 +7,6 @@ edition = "2018"
 [dependencies]
 future-ext = { git = "https://github.com/kildevaeld/future-ext" }
 futures = "^0.1"
-serde = "^1.0"
-serde_json = "^1.0"
-serde_cbor = "*"
-websocket = "^0.22"
-typemap = "^0.3"
 
 
 [dev-dependencies]

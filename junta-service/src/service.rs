@@ -6,7 +6,6 @@ pub trait Service {
     type Input;
     type Output;
     type Error;
-
     type Future: Future<Item = Self::Output, Error = Self::Error> + Send + 'static;
 
     fn call(&self, input: Self::Input) -> Self::Future;

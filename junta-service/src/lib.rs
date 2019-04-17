@@ -1,6 +1,7 @@
 pub mod error;
 mod middleware;
 mod middleware_chain;
+mod pipe_chain;
 mod service;
 mod service_chain;
 

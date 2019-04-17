@@ -54,14 +54,3 @@ where
         self.s1.should_call(ctx) || self.s2.should_call(ctx)
     }
 }
-
-pub trait ServiceExt: Service + Sized {
-    fn or<S: Service<Input = Self::Input, Output = Self::Output, Error = Self::Error>>(
-        self,
-        service: S,
-    ) -> ServiceChain<Self, S> {
-        ServiceChain::new(self, service)
-    }
-}
-
-impl<T> ServiceExt for T where T: Service {}
