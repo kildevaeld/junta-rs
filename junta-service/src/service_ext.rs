@@ -1,7 +1,6 @@
 use super::pipe_chain::Pipe;
 use super::service::Service;
 use super::service_chain::ServiceChain;
-use futures::prelude::*;
 use std::sync::Arc;
 
 pub trait ServiceExt: Service + Sized {
