@@ -25,4 +25,8 @@ where
         let s2 = self.s2.clone();
         Box::new(self.s1.call(input).and_then(move |ret| s2.call(ret)))
     }
+
+    fn should_call(&self, input: &Self::Input) -> bool {
+        self.s1.should_call(input)
+    }
 }

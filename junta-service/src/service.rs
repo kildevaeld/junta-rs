@@ -10,7 +10,8 @@ pub trait Service {
 
     fn call(&self, input: Self::Input) -> Self::Future;
 
-    fn should_call(&self, _intput: &Self::Input) -> bool {
+    #[allow(unused_variables)]
+    fn should_call(&self, input: &Self::Input) -> bool {
         true
     }
 }
