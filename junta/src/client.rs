@@ -1,17 +1,14 @@
 use super::error::{JuntaError, JuntaErrorKind};
 use super::server::{Broadcast, MessageContent};
 use atomic_counter::AtomicCounter;
-use future_ext::*;
 use futures::prelude::*;
 use futures::sink::Sink;
 use futures::stream::{SplitSink, SplitStream};
 use futures::sync::mpsc::{Receiver, Sender};
 use futures::sync::oneshot::{Receiver as OneReceiver, Sender as OneSender};
 use junta_service::error::ServiceError;
-use junta_service::prelude::*;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tokio::codec::Framed;
 use tokio::net::TcpStream;
 use tokio::prelude::*;

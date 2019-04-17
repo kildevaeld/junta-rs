@@ -3,7 +3,6 @@ use super::context::Context;
 use super::error::{JuntaError, JuntaErrorKind, JuntaResult};
 use future_ext::{OneOfFour, OneOfFourFuture, OneOfTwo, OneOfTwoFuture};
 use futures::prelude::*;
-use futures::sync::oneshot::channel;
 use junta_service::prelude::*;
 use slog::{Discard, Logger};
 use std::collections::HashMap;

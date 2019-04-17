@@ -18,6 +18,5 @@ pub mod prelude {
     pub use super::error::*;
     pub use super::plugins;
     pub use super::server::*;
-    //pub use super::utils::*;
     pub use typemap::Key;
 }
